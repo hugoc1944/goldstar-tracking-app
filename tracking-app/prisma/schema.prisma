@@ -1,0 +1,123 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Estados: Em preparação → Em produção → Em expedição → Entregue
+enum OrderStatus {
+  PREPARACAO
+  PRODUCAO
+  EXPEDICAO
+  ENTREGUE
+}
+
+// Mensagens no pedido (Admin ↔ Cliente)
+enum AuthorType {
+  ADMIN
+  CLIENTE
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  nif       String?
+  address   String?
+  orders    Order[]
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  status         OrderStatus @default(PREPARACAO)
+  eta            DateTime? // definido ao passar para EXPEDICAO
+  trackingNumber String? // número de tracking (opcional)
+  publicToken    String      @unique
+
+  createdAt DateTime @default(now())
+
+  items    OrderItem[]
+  events   StatusEvent[]
+  messages Message[]
+
+  filesJson    Json?
+
+  @@index([status])
+  @@index([publicToken])
+}
+
+model OrderItem {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  sku         String? // opcional; pode ficar vazio em “diversos”
+  model       String? // “Modelo” (quando aplicável)
+  description String // descrição livre do item
+  quantity    Int     @default(1)
+
+  technicalFile  String? // caminho/URL do ficheiro técnico (PDF/IMG/…)
+  complements    Json? // complementos (se existirem)
+  customizations Json? // customizações (se existirem)
+
+  attachmentsRef String? // referência adicional a anexos (se precisares)
+  createdAt      DateTime @default(now())
+}
+
+model StatusEvent {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  from      OrderStatus?
+  to        OrderStatus
+  byAdminId String
+  note      String?
+  at        DateTime     @default(now())
+
+  @@index([orderId, at])
+}
+
+model Message {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  authorType AuthorType
+  body       String
+  createdAt  DateTime   @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("admin")
+  createdAt    DateTime @default(now())
+}
+
+model CatalogOption {
+  id       String  @id @default(cuid())
+  group    String  // PROFILE | ACRYLIC | SERIGRAPHY | MONOCHROME
+  category String?
+  value    String
+  label    String
+  sort     Int     @default(0)
+  active   Boolean @default(true)
+
+  @@index([group, category, sort])
+
+  // ✅ composite unique to avoid duplicates per (group, value)
+  @@unique([group, value])
+}
