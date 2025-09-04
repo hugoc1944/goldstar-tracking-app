@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { notifyStatusChanged } from '@/lib/notify';
 import { use } from 'react'; // <- needed to unwrap ctx.params in Next 15
 
+export const runtime = 'nodejs'; 
 const Status = z.enum(['PREPARACAO','PRODUCAO','EXPEDICAO','ENTREGUE']);
 
 const PatchBody = z.object({

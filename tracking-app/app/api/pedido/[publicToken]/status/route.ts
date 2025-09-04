@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { notifySupportMessage } from '@/lib/notify';
 
+export const runtime = 'nodejs'; 
 
 const Body = z.object({
   text: z.string().trim().min(1).max(4000),

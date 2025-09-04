@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 // If you want to hard-gate this to admins, uncomment the next line:
 // import { requireAdminSession } from '@/lib/auth-helpers';
 
+export const runtime = 'nodejs'; 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   // await requireAdminSession(); // optional but recommended in admin-only routes
 

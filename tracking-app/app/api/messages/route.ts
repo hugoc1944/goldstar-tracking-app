@@ -6,6 +6,7 @@ import { requireAdminSession } from '@/lib/auth-helpers';
 import { notifySupportMessage, notifyAdminMessageToClient } from '@/lib/notify';
 import { AuthorType } from '@prisma/client';
 
+export const runtime = 'nodejs'; 
 // One body schema, two shapes (CLIENTE vs ADMIN)
 const Body = z.union([
   z.object({
