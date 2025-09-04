@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AdminShell from '@/components/admin/AdminShell';
@@ -29,7 +29,23 @@ function useDebounced<T>(value: T, ms = 350) {
   return v;
 }
 
+/** Page wrapper – provides layout and Suspense boundary (fixes the prerender error) */
 export default function ClientsPage() {
+  return (
+    <AdminShell>
+      <Suspense fallback={
+        <div className="rounded-2xl border border-border bg-white p-6 text-sm text-muted-foreground">
+          A carregar…
+        </div>
+      }>
+        <ClientsPageInner />
+      </Suspense>
+    </AdminShell>
+  );
+}
+
+/** All hook usage (useSearchParams, etc.) lives inside the Suspense boundary */
+function ClientsPageInner() {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -39,16 +55,12 @@ export default function ClientsPage() {
 
   const [data, setData] = useState<ClientsPayload | null>(null);
   const [loading, setLoading] = useState(false);
-  const [cursor, setCursor] = useState<string | null>(null);
 
-  // sync query to URL
+  // sync query to URL + fetch first page whenever search changes
   useEffect(() => {
     const usp = new URLSearchParams();
     if (debouncedQ.trim()) usp.set('q', debouncedQ.trim());
     router.replace(usp.toString() ? `/admin/clients?${usp}` : '/admin/clients');
-
-    // reset pagination and fetch first page
-    setCursor(null);
     void fetchPage(debouncedQ.trim(), null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQ]);
@@ -87,13 +99,11 @@ export default function ClientsPage() {
 
   function loadMore() {
     if (!data?.nextCursor) return;
-    const nextCur = data.nextCursor;
-    setCursor(nextCur);
-    void fetchPage(debouncedQ.trim(), nextCur);
+    void fetchPage(debouncedQ.trim(), data.nextCursor);
   }
 
   return (
-    <AdminShell>
+    <>
       {/* Header (matches Orders page style) */}
       <header className="mb-6 flex items-center justify-between">
         <div>
@@ -104,20 +114,21 @@ export default function ClientsPage() {
         {/* Search on the right */}
         <div className="relative w-full max-w-xs">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
             >
-            <circle cx="11" cy="11" r="7" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg></span>
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </span>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -190,7 +201,7 @@ export default function ClientsPage() {
           </button>
         </div>
       </div>
-    </AdminShell>
+    </>
   );
 }
 
