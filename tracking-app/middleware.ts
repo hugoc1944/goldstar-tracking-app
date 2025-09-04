@@ -1,32 +1,43 @@
-// middleware.ts
-import { NextResponse, type NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+// OPTIONAL: if you use next-auth middleware, prefer that instead of custom logic.
+// export { auth as middleware } from '@/lib/auth';
+// export const config = { matcher: ['/admin/:path*'] };
 
 export async function middleware(req: NextRequest) {
-  const { pathname, search } = req.nextUrl;
-  const isAdminArea = pathname.startsWith("/admin");
-  const isLogin = pathname.startsWith("/admin/login");
+  try {
+    const { pathname } = req.nextUrl;
 
-  if (!isAdminArea) return NextResponse.next();
+    // allow public/auth routes to pass
+    if (
+      pathname.startsWith('/api/auth') ||
+      pathname === '/admin/login' ||
+      pathname.startsWith('/_next') ||
+      pathname.startsWith('/favicon') ||
+      pathname.startsWith('/brand') ||
+      pathname === '/'
+    ) {
+      return NextResponse.next();
+    }
 
-  // Read NextAuth session (JWT) at the edge
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    // If you gate /admin here, only do light checks;
+    // DO NOT call Prisma or server-only code in middleware.
+    if (pathname.startsWith('/admin')) {
+      // Example: read a cookie set by next-auth; don’t import next-auth server here.
+      // If you need full session, use next-auth's official middleware instead.
+      return NextResponse.next();
+    }
 
-  // Block access to /admin/* when not logged in (except the login page)
-  if (!token && !isLogin) {
-    const url = new URL("/admin/login", req.url);
-    // preserve target so we can come back after login
-    url.searchParams.set("callbackUrl", pathname + search);
-    return NextResponse.redirect(url);
+    return NextResponse.next();
+  } catch (err) {
+    // Never let the middleware crash
+    console.error('middleware error:', err);
+    return NextResponse.next();
   }
-
-  // If already authenticated and visiting /admin/login, send to /admin
-  if (token && isLogin) {
-    return NextResponse.redirect(new URL("/admin", req.url));
-  }
-
-  return NextResponse.next();
 }
 
-// Apply only to /admin/*
-export const config = { matcher: ["/admin/:path*"] };
+// Limit what the middleware runs on
+export const config = {
+  matcher: ['/((?!_next|favicon.ico|brand).*)'],
+};

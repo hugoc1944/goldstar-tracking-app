@@ -2,5 +2,6 @@
 import { redirect } from 'next/navigation';
 
 export default function Home() {
-  redirect('/admin'); // or '/admin/login' if you require auth first
+  // send everyone to the admin login (or /admin/orders if already doing auth elsewhere)
+  redirect('/admin/login');
 }
