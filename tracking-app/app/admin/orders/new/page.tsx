@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useMemo, useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import AdminShell from '@/components/admin/AdminShell';
 import { signOut } from 'next-auth/react';
 
@@ -97,6 +97,52 @@ export default function NewOrderPage() {
     eta: '' as string | '',
   });
 
+  // read ?fromClient=<customerId> to prefill
+  const searchParams = useSearchParams();
+  const fromClient = searchParams.get('fromClient');
+
+  useEffect(() => {
+    if (!fromClient) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/clients/${fromClient}`, { cache: 'no-store' });
+        if (!r.ok) return;
+        const c = await r.json();
+
+        if (cancelled) return;
+
+        setClient({
+          name: c.name ?? '',
+          email: c.email ?? '',
+          phone: c.phone ?? '',
+          nif: c.nif ?? '',
+          address: c.address ?? '',
+          postal: c.postal ?? '',
+          city: c.city ?? '',
+        });
+
+        // optional: if you're using the suggestions list, close it
+        setOpenList(false);
+        setSelectedCustomerId(c.id ?? null);
+      } catch (_) {
+        // no-op; keep form empty if fetch fails
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [fromClient]);
+
+
+    const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+    const [suggestions, setSuggestions] = useState<Array<{
+    id: string; name: string; email: string | null;
+    phone?: string | null; nif?: string | null; address?: string | null; postal?: string | null; city?: string | null;
+    }>>([]);
+    const [openList, setOpenList] = useState(false);
+    const [activeIndex, setActiveIndex] = useState(0);
+
   const etaRequired = useMemo(() => order.initialStatus === 'EXPEDICAO', [order.initialStatus]);
 
   useEffect(() => {
@@ -157,6 +203,7 @@ export default function NewOrderPage() {
             acrylic: order.acrylic,
             serigraphy: order.serigraphy,
             monochrome: order.monochrome,
+            complements: order.complements,
             initialStatus: order.initialStatus,
             eta: order.eta || null,
             files,
@@ -170,6 +217,55 @@ export default function NewOrderPage() {
       setSubmitting(false);
     }
   }
+
+  function useDebounced<T>(value: T, ms = 250) {
+  const [v, setV] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setV(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return v; }
+  const debouncedName = useDebounced(client.name, 250);
+
+    useEffect(() => {
+    // If user starts typing a different name, forget previous selection
+    setSelectedCustomerId(null);
+
+    const q = debouncedName.trim();
+    if (!q || q.length < 2) { setSuggestions([]); setOpenList(false); return; }
+
+    let cancelled = false;
+    (async () => {
+        const r = await fetch(`/api/clients/search?q=${encodeURIComponent(q)}&limit=5`, { cache: 'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled) {
+        setSuggestions(data.items ?? []);
+        setOpenList((data.items ?? []).length > 0);
+        setActiveIndex(0);
+        }
+    })();
+    return () => { cancelled = true; };
+    }, [debouncedName]);
+
+    function pickSuggestion(i: number) {
+    const s = suggestions[i];
+    if (!s) return;
+    setSelectedCustomerId(s.id);
+    setClient({
+        ...client,
+        name: s.name,
+        email: s.email ?? '',
+        phone: s.phone ?? '',
+        nif: s.nif ?? '',
+        address: s.address ?? '',
+        postal: s.postal ?? '',
+        city: s.city ?? '',
+    });
+    setOpenList(false);
+    }
+
+    function truncateEmail(email: string, max = 24) {
+        if (!email) return '';
+        return email.length <= max ? email : email.slice(0, max - 3) + '…';
+    }
 
   if (loading) {
     return (
@@ -195,46 +291,82 @@ export default function NewOrderPage() {
         <section className="rounded-2xl border border-border bg-card/60 p-6 shadow-card">
           <h2 className="text-lg font-semibold text-foreground">Dados do cliente</h2>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field
-              label="Nome*"
-              required
-              value={client.name}
-              onChange={(v) => setClient({ ...client, name: v })}
-            />
-            <Field
-              label="Email*"
-              type="email"
-              required
-              value={client.email}
-              onChange={(v) => setClient({ ...client, email: v })}
-            />
-            <Field
-              label="Telefone"
-              value={client.phone}
-              onChange={(v) => setClient({ ...client, phone: v })}
-            />
-            <Field label="NIF" value={client.nif} onChange={(v) => setClient({ ...client, nif: v })} />
-          </div>
+            <div className="relative">
+                <label className="mb-1 block text-sm font-medium text-foreground">Nome*</label>
+                <input
+                    className="block w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50"
+                    required
+                    value={client.name}
+                    onChange={(e) => {
+                    setClient({ ...client, name: e.target.value });
+                    setOpenList(true);
+                    }}
+                    onKeyDown={(e) => {
+                    if (!openList || suggestions.length === 0) return;
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex((i) => Math.min(i + 1, suggestions.length - 1)); }
+                    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex((i) => Math.max(i - 1, 0)); }
+                    else if (e.key === 'Enter') { e.preventDefault(); pickSuggestion(activeIndex); }
+                    else if (e.key === 'Escape') { setOpenList(false); }
+                    }}
+                    onBlur={() => { setTimeout(() => setOpenList(false), 120); }} // allow click
+                    placeholder="Nome completo"
+                />
 
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Textarea
-              className="sm:col-span-2"
-              label="Morada"
-              rows={4}
-              value={client.address}
-              onChange={(v) => setClient({ ...client, address: v })}
-            />
-            <Field
-              label="Código Postal"
-              value={client.postal}
-              onChange={(v) => setClient({ ...client, postal: v })}
-            />
-            <Field
-              label="Localidade"
-              value={client.city}
-              onChange={(v) => setClient({ ...client, city: v })}
-            />
-          </div>
+                {openList && suggestions.length > 0 && (
+                    <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-border bg-popover shadow-sm">
+                    {suggestions.map((s, i) => (
+                        <li
+                        key={s.id}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pickSuggestion(i)}
+                        className={[
+                            'flex cursor-pointer items-center justify-between px-3 py-2 text-sm',
+                            i === activeIndex ? 'bg-muted/60' : 'hover:bg-muted/30'
+                        ].join(' ')}
+                        >
+                        <span className="truncate">{s.name}</span>
+                        <span className="ml-3 truncate text-muted-foreground">
+                            {truncateEmail(s.email ?? '')}
+                        </span>
+                        </li>
+                    ))}
+                    </ul>
+                )}
+                </div>
+                <Field
+                label="Email*"
+                type="email"
+                required
+                value={client.email}
+                onChange={(v) => setClient({ ...client, email: v })}
+                />
+                <Field
+                label="Telefone"
+                value={client.phone}
+                onChange={(v) => setClient({ ...client, phone: v })}
+                />
+                <Field label="NIF" value={client.nif} onChange={(v) => setClient({ ...client, nif: v })} />
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Textarea
+                className="sm:col-span-2"
+                label="Morada"
+                rows={4}
+                value={client.address}
+                onChange={(v) => setClient({ ...client, address: v })}
+                />
+                <Field
+                label="Código Postal"
+                value={client.postal}
+                onChange={(v) => setClient({ ...client, postal: v })}
+                />
+                <Field
+                label="Localidade"
+                value={client.city}
+                onChange={(v) => setClient({ ...client, city: v })}
+                />
+            </div>
         </section>
 
         {/* Card — Detalhes do produto */}

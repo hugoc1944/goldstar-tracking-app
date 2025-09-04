@@ -10,11 +10,14 @@ const Status = z.enum(['PREPARACAO','PRODUCAO','EXPEDICAO','ENTREGUE']);
 
 const CreateBody = z.object({
   client: z.object({
+    id: z.string().uuid().optional(),
     name: z.string().min(2),
     email: z.string().email(),
     phone: z.string().optional().nullable(),
     nif: z.string().optional().nullable(),
     address: z.string().optional().nullable(),
+    postal: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
   }),
   order: z.object({
     model: z.string(),                                  // coloca-se em OrderItem.model
@@ -22,6 +25,7 @@ const CreateBody = z.object({
     acrylic: z.string().optional().nullable(),
     serigraphy: z.string().optional().nullable(),
     monochrome: z.string().optional().nullable(),
+    complements: z.string().optional().nullable(),
     initialStatus: Status,
     eta: z.string().datetime().nullable().optional(),   // ISO quando EXPEDICAO
     files: z.array(z.object({
@@ -37,6 +41,21 @@ const CreateBody = z.object({
   }),
 });
 
+async function searchCustomersByNameOrEmail(q: string) {
+  const customers = await prisma.customer.findMany({
+    where: {
+      OR: [
+        { name:  { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+      ],
+    },
+    take: 5,
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, name: true, email: true, phone: true, nif: true, address: true, postal: true, city: true },
+  });
+  return customers;
+}
+
 export async function POST(req: Request) {
   const admin = await requireAdminSession(); // garante admin; deve devolver pelo menos { id, email }
   const { client, order } = CreateBody.parse(await req.json());
@@ -46,22 +65,46 @@ export async function POST(req: Request) {
   }
 
   // Upsert cliente por email
-  const customer = await prisma.customer.upsert({
-    where: { email: client.email },
-    update: {
-      name: client.name,
-      phone: client.phone ?? null,
-      nif: client.nif ?? null,
-      address: client.address ?? null,
-    },
-    create: {
-      name: client.name,
-      email: client.email,
-      phone: client.phone ?? null,
-      nif: client.nif ?? null,
-      address: client.address ?? null,
-    },
-  });
+  let customer;
+  if (client.id) {
+    customer = await prisma.customer.findUnique({ where: { id: client.id } });
+    if (!customer) {
+      return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
+    }
+    // Optionally refresh fields if UI allowed editing after selection:
+    customer = await prisma.customer.update({
+      where: { id: client.id },
+      data: {
+        name:    client.name,
+        phone:   client.phone ?? null,
+        nif:     client.nif ?? null,
+        address: client.address ?? null,
+        postal:  client.postal ?? null,
+        city:    client.city ?? null,
+      },
+    });
+  } else {
+    customer = await prisma.customer.upsert({
+      where: { email: client.email },
+      update: {
+        name:    client.name,
+        phone:   client.phone ?? null,
+        nif:     client.nif ?? null,
+        address: client.address ?? null,
+        postal:  client.postal ?? null,
+        city:    client.city ?? null,
+      },
+      create: {
+        name:    client.name,
+        email:   client.email,
+        phone:   client.phone ?? null,
+        nif:     client.nif ?? null,
+        address: client.address ?? null,
+        postal:  client.postal ?? null,
+        city:    client.city ?? null,
+      },
+    });
+  }
 
   const publicToken = crypto.randomBytes(24).toString('base64url');
 
@@ -85,6 +128,7 @@ export async function POST(req: Request) {
         description: 'Detalhes do produto',
         quantity: 1,
         model: order.model,
+        complements: order.complements,
         customizations: {
           finish: order.finish ?? null,
           acrylic: order.acrylic ?? null,
@@ -143,31 +187,42 @@ function shortIdFromDate(dt: Date): string {
   const d = new Date(dt);
   return `#${String(d.getFullYear()).slice(2)}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
 }
-
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const search = url.searchParams.get('search')?.trim() ?? '';
+  // NOTE: the page sends `search` in the querystring for the API call
+  const rawSearch = (url.searchParams.get('search') ?? '').trim();
   const status = url.searchParams.get('status') as
     | 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE' | null;
   const model = url.searchParams.get('model') ?? '';
   const take = Math.min(parseInt(url.searchParams.get('take') ?? '20', 10) || 20, 50);
   const cursor = url.searchParams.get('cursor');
 
+  // Normalize search input
+  // Accept: "#91ce" | "91ce" (short prefix), full UUID, publicToken, tracking, or customer name
+  let search = rawSearch;
+  if (search.startsWith('#')) search = search.slice(1);
+
   const where: any = {};
   if (status) where.status = status;
+
   if (search) {
     where.OR = [
+      // Customer name
       { customer: { name: { contains: search, mode: 'insensitive' } } },
+      // Short id prefix (first 4)
+      { id: { startsWith: search } },
+      // Full UUID or any longer prefix (contains covers copy/pastes)
+      { id: { contains: search } },
+      // Public tracking token (from public page/email)
+      { publicToken: { contains: search } },
+      // Carrier tracking number
       { trackingNumber: { contains: search, mode: 'insensitive' } },
-      // allow searching publicToken too if you want
-      { publicToken: { contains: search, mode: 'insensitive' } },
     ];
   }
-  // model comes from first OrderItem.model (“Detalhes do produto” row):
+
+  // Filter by model = first OrderItem.model (“Detalhes do produto” row)
   if (model) {
-    where.items = {
-      some: { model: model }
-    };
+    where.items = { some: { model } };
   }
 
   const orders = await prisma.order.findMany({
@@ -186,7 +241,7 @@ export async function GET(req: Request) {
 
   const rows = page.map(o => ({
     id: o.id,
-    shortId: shortIdFromDate(o.createdAt),         // e.g. #25091113; adjust to your taste
+    shortId: '#' + o.id.slice(0, 4),       // <-- unified short ref
     customer: { name: o.customer?.name ?? '' },
     status: o.status,
     eta: o.eta ? o.eta.toISOString() : null,

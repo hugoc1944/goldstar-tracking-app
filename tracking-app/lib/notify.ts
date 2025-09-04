@@ -67,3 +67,34 @@ export async function notifyClientMessageToAdmin(order: OrderForEmail, message: 
     }),
   });
 }
+
+export async function notifySupportMessage(args: {
+  orderId: string;
+  publicToken: string;
+  customer: { name: string; email: string };
+  message: string;
+}) {
+  const to = process.env.SUPPORT_TO!;
+  if (!to) {
+    console.warn('notifySupportMessage: SUPPORT_TO not set');
+    return;
+  }
+
+
+  // Plain fallback in case you don’t want a separate email template:
+  const subject = `GOLDSTAR • Mensagem do cliente · Pedido #${args.orderId.slice(0, 8)}`;
+
+  console.log("TOOO----"+to)
+  await sendMail({
+  to,
+  
+  subject,
+  react: ClientMessageToAdminEmail({
+    adminEmail: to,
+    orderId: args.orderId,
+    customerName: args.customer.name,
+    customerEmail: args.customer.email,
+    message: args.message,
+  }),
+});
+}

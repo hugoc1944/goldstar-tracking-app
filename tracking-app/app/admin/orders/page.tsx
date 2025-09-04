@@ -182,42 +182,64 @@ export default function OrdersPage() {
     // ---- lazy load full order for EditOrderModal ----
     // (expects you have GET /api/orders/[id] returning the fields EditOrderModal needs)
     useEffect(() => {
-    let alive = true;
-    (async () => {
+      let alive = true;
+      (async () => {
         if (!editFor) return;
         setEditLoading(true);
         setEditPayload(null);
+
         const r = await fetch(`/api/orders/${editFor}`, { cache: 'no-store' });
         if (!alive) return;
-        if (r.ok) {
-        const data = await r.json();
-        const first = data.items?.[0] ?? {};
-        const custom = (first?.customizations ?? {}) as any;
 
-        setEditPayload({
+        if (r.ok) {
+          const data = await r.json();
+          const first = data.items?.[0] ?? {};
+          const custom = (first?.customizations ?? {}) as any;
+
+          // --- normalize complements from JSON / string / null to a simple code
+          const complementsCode = (() => {
+            const raw = first?.complements as any;
+            if (!raw || raw === 'null') return 'DIVERSOS';
+            if (typeof raw === 'string') {
+              try {
+                const o = JSON.parse(raw);
+                return o?.code ?? raw ?? 'DIVERSOS';
+              } catch {
+                // if it’s already a plain string code, use it
+                return raw || 'DIVERSOS';
+              }
+            }
+            if (typeof raw === 'object') {
+              return (raw as any)?.code ?? 'DIVERSOS';
+            }
+            return 'DIVERSOS';
+          })();
+
+          setEditPayload({
             id: data.id,
             tracking: data.trackingNumber ?? '',
             client: {
-            phone: data.customer?.phone ?? '',
-            address: data.customer?.address ?? '',
-            postal: data.customer?.postal ?? '',
-            city: data.customer?.city ?? '',
+              phone:  data.customer?.phone  ?? '',
+              address:data.customer?.address?? '',
+              postal: data.customer?.postal ?? '',
+              city:   data.customer?.city   ?? '',
             },
             details: {
-            model: first?.model ?? 'DIVERSOS',
-            finish: custom.finish ?? 'DIVERSOS',
-            acrylic: custom.acrylic ?? 'DIVERSOS',
-            serigraphy: custom.serigraphy ?? 'DIVERSOS',
-            monochrome: custom.monochrome ?? 'DIVERSOS',
+              model:       first?.model ?? 'DIVERSOS',
+              finish:      custom.finish      ?? 'DIVERSOS',
+              acrylic:     custom.acrylic     ?? 'DIVERSOS',
+              serigraphy:  custom.serigraphy  ?? 'DIVERSOS',
+              monochrome:  custom.monochrome  ?? 'DIVERSOS',
+              complements: complementsCode, // <- pass to EditOrderModal
             },
             files: (data.filesJson as any[]) ?? [],
-        });
+          });
         } else {
-        setEditFor(null);
+          setEditFor(null);
         }
         setEditLoading(false);
-    })();
-    return () => { alive = false; };
+      })();
+      return () => { alive = false; };
     }, [editFor]);
 
   // Optionally fetch model options from /api/catalog/MODEL
@@ -259,7 +281,21 @@ export default function OrdersPage() {
             <div className="mb-4 flex flex-wrap items-center gap-3">
             {/* Search */}
             <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">🔎</span>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg></span>
                 <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -338,7 +374,21 @@ export default function OrdersPage() {
                             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-primary hover:bg-primary/10"
                             title="Editar"
                             type="button">
-                            ✏️
+                            <svg
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="shrink-0"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                            </svg>
                             </button>
                         </Td>
                     </tr>

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAdminSession } from '@/lib/auth-helpers';
 import { z } from 'zod';
 import { notifyStatusChanged } from '@/lib/notify';
+import { use } from 'react'; // <- needed to unwrap ctx.params in Next 15
 
 const Status = z.enum(['PREPARACAO','PRODUCAO','EXPEDICAO','ENTREGUE']);
 
@@ -18,6 +19,8 @@ const PatchBody = z.object({
     phone: z.string().optional().nullable(),
     address: z.string().optional().nullable(),
     nif: z.string().optional().nullable(),
+    postal: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
   }).optional(),
   details: z.object({
     model: z.string().optional(),
@@ -25,6 +28,7 @@ const PatchBody = z.object({
     acrylic: z.string().optional().nullable(),
     serigraphy: z.string().optional().nullable(),
     monochrome: z.string().optional().nullable(),
+    complements: z.string().optional().nullable(),
     tracking: z.string().optional().nullable(),
   }).optional(),
   files: z.array(z.object({
@@ -42,14 +46,17 @@ const ALLOWED_NEXT: Record<z.infer<typeof Status>, z.infer<typeof Status>[]> = {
   ENTREGUE: [],
 };
 
-type Params = { params: { id: string } };
+// -------- PATCH (status / update)
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> | { id: string } }) {
+  // Unwrap params for Next 15
+  const p = (ctx.params as any);
+  const { id } = typeof p?.then === 'function' ? await p : p;
 
-export async function PATCH(req: Request, { params }: Params) {
   const admin = await requireAdminSession();
   const body = PatchBody.parse(await req.json());
 
   const order = await prisma.order.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       customer: true,
       items: { orderBy: { createdAt: 'asc' } }, // 1º item = “Detalhes do produto”
@@ -93,7 +100,6 @@ export async function PATCH(req: Request, { params }: Params) {
       return o;
     });
 
-    // email para o cliente (notify.ts espera `customer` aninhado + status, etc.)
     try {
       await notifyStatusChanged({
         id: order.id,
@@ -119,6 +125,8 @@ export async function PATCH(req: Request, { params }: Params) {
           phone: body.client.phone ?? undefined,
           address: body.client.address ?? undefined,
           nif: body.client.nif ?? undefined,
+          postal: body.client.postal ?? undefined,
+          city: body.client.city ?? undefined,
         },
       });
     }
@@ -139,6 +147,7 @@ export async function PATCH(req: Request, { params }: Params) {
           where: { id: detailItem.id },
           data: {
             model: body.details.model ?? undefined,
+            complements: body.details.complements ?? undefined,
             customizations: {
               ...(detailItem.customizations as any),
               ...(body.details.finish !== undefined ? { finish: body.details.finish } : {}),
@@ -153,4 +162,66 @@ export async function PATCH(req: Request, { params }: Params) {
   });
 
   return NextResponse.json({ ok: true });
+}
+
+// -------- GET (used by EditOrderModal loader)
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> | { id: string } }) {
+  // Unwrap params for Next 15
+  const p = (ctx.params as any);
+  const { id } = typeof p?.then === 'function' ? await p : p;
+
+  await requireAdminSession();
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      customer: {
+        select: { name: true, email: true, phone: true, address: true, nif: true, postal: true, city: true },
+      },
+      items: {
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          model: true,
+          description: true,
+          quantity: true,
+          customizations: true,
+          complements: true,
+        },
+      },
+    },
+  });
+
+  if (!order) return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
+
+  const detailItem = order.items[0];
+
+  return NextResponse.json({
+    id: order.id,
+    trackingNumber: order.trackingNumber ?? null,
+    filesJson: order.filesJson ?? [],
+    customer: order.customer,
+    items: order.items,
+    // 🔽 convenience shape for the modal (what EditOrderModal expects)
+    forModal: {
+      id: order.id,
+      client: {
+        phone: order.customer?.phone ?? '',
+        address: order.customer?.address ?? '',
+        postal: order.customer?.postal ?? '',
+        city: order.customer?.city ?? '',
+      },
+      details: {
+        model: detailItem?.model ?? 'DIVERSOS',
+        finish: (detailItem?.customizations as any)?.finish ?? 'DIVERSOS',
+        acrylic: (detailItem?.customizations as any)?.acrylic ?? 'DIVERSOS',
+        serigraphy: (detailItem?.customizations as any)?.serigraphy ?? 'DIVERSOS',
+        monochrome: (detailItem?.customizations as any)?.monochrome ?? 'DIVERSOS',
+        complements:
+          typeof detailItem?.complements === 'string'
+            ? detailItem?.complements
+            : (detailItem?.complements as any) ?? 'DIVERSOS', // handle string/JSON/null
+      },
+      files: (order.filesJson as any[]) ?? [],
+    },
+  });
 }

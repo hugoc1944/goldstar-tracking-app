@@ -29,6 +29,8 @@ model Customer {
   phone     String?
   nif       String?
   address   String?
+  postal    String?   // <- NEW
+  city      String?   // <- NEW
   orders    Order[]
   createdAt DateTime @default(now())
 }
@@ -66,7 +68,7 @@ model OrderItem {
   quantity    Int     @default(1)
 
   technicalFile  String? // caminho/URL do ficheiro técnico (PDF/IMG/…)
-  complements    Json? // complementos (se existirem)
+  complements    String? // complementos (se existirem)
   customizations Json? // customizações (se existirem)
 
   attachmentsRef String? // referência adicional a anexos (se precisares)
