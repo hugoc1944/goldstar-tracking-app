@@ -1,9 +1,18 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthOptions } from 'next-auth';
 import Credentials from "next-auth/providers/credentials";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcrypt";
 
-const handler = NextAuth({
+export const runtime = 'nodejs'; 
+
+const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
+  session: { strategy: 'jwt' }, // or 'database' if that’s your choice
+  secret: process.env.NEXTAUTH_SECRET,
+  pages: {
+    signIn: '/admin/login',
+  },
   providers: [
     Credentials({
       name: "Credentials",
@@ -37,16 +46,7 @@ const handler = NextAuth({
       },
     }),
   ],
-  session: {
-    strategy: "jwt",
-    maxAge: 60 * 60 * 8, // 8 hours
-  },
-  jwt: {
-    maxAge: 60 * 60 * 8,
-  },
-  pages: {
-    signIn: "/admin/login",
-  },
-});
+}
 
+const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
