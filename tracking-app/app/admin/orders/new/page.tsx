@@ -1,11 +1,10 @@
 'use client';
 
-import Image from 'next/image';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { useMemo, useEffect, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AdminShell from '@/components/admin/AdminShell';
-import { signOut } from 'next-auth/react';
 
 /* ---------- types & helpers ---------- */
 type Opt = { value: string; label: string; category?: string | null };
@@ -61,7 +60,7 @@ function NavItem({
 /* ===========================================================
    PAGE
 =========================================================== */
-export default function NewOrderPage() {
+export function NewOrderClient() {
   const router = useRouter();
 
   // catalog options
@@ -509,6 +508,21 @@ export default function NewOrderPage() {
         </div>
       </form>
     </AdminShell>
+  );
+}
+
+
+export default function NewOrderPage(){
+  return (
+    <Suspense
+      fallback={
+        <AdminShell>
+          <div className="py-16 text-center text-muted-foreground">A carregar…</div>
+        </AdminShell>
+      }
+    >
+      <NewOrderClient />
+    </Suspense>
   );
 }
 
