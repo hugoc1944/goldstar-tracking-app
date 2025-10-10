@@ -5,15 +5,9 @@ import Link from 'next/link';
 // Opt out of static rendering and caching (safe for success pages with query params)
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+import ClientLogger from './ClientLogger';   // <-- add this import
 
 // Tiny client logger to print the id in the browser console (optional)
-function ClientLogger({ id }: { id?: string | null }) {
-  'use client';
-  React.useEffect(() => {
-    if (id) console.log('[Orçamento enviado] id:', id);
-  }, [id]);
-  return null;
-}
 
 function shortRef(id?: string | null) {
   return id ? `#${id.slice(0, 4)}` : '—';
