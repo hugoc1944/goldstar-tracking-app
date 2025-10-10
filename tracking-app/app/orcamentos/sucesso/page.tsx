@@ -1,31 +1,45 @@
-'use client';
-
 import * as React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 
-export default function BudgetSuccessPage() {
-  const sp = useSearchParams();
-  const id = sp.get('id');
+// Opt out of static rendering and caching (safe for success pages with query params)
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
+// Tiny client logger to print the id in the browser console (optional)
+function ClientLogger({ id }: { id?: string | null }) {
+  'use client';
   React.useEffect(() => {
     if (id) console.log('[Orçamento enviado] id:', id);
   }, [id]);
+  return null;
+}
 
-  const shortRef = (s?: string | null) => (s ? `#${s.slice(0, 4)}` : '—');
+function shortRef(id?: string | null) {
+  return id ? `#${id.slice(0, 4)}` : '—';
+}
+
+export default function BudgetSuccessPage({
+  searchParams,
+}: {
+  searchParams: { id?: string };
+}) {
+  const id = searchParams?.id ?? null;
 
   return (
     <main className="mx-auto max-w-4xl p-6 md:p-8">
+      {/* optional console.log in client */}
+      <ClientLogger id={id} />
+
       {/* Top bar with logo */}
-      <div className="mb-5 flex items-center gap-4">
+      <div className="mb-6 flex items-center gap-4">
         <Image
-                src="/brand/logo-simulador_dark.png"
-                alt="Goldstar Simulator"
-                width={220}
-                height={48}
-                priority
-                className="h-[120px] w-auto"
+          src="/brand/logo-trackingapp_dark.png"
+          alt="Goldstar"
+          width={260}
+          height={60}
+          priority
+          className="h-[60px] w-auto"
         />
       </div>
 
@@ -43,11 +57,22 @@ export default function BudgetSuccessPage() {
         <div className="px-6 py-8">
           <div className="mb-4 inline-flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-emerald-800">
             {/* Check icon */}
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M20 6L9 17l-5-5" />
             </svg>
-            <span>Recebemos o seu pedido{ id ? <> <span className="opacity-70">({shortRef(id)})</span></> : null }.</span>
+            <span>
+              Recebemos o seu pedido{' '}
+              {id ? <span className="opacity-70">({shortRef(id)})</span> : null}.
+            </span>
           </div>
 
           <p className="text-[15px] text-neutral-800">
@@ -64,7 +89,9 @@ export default function BudgetSuccessPage() {
             >
               Fazer novo orçamento
             </Link>
-            <Link href="https://mfn.pt/" target='_blank' className="text-yellow-700 hover:underline">Voltar à página inicial</Link>
+            <Link href="/" className="text-yellow-700 hover:underline">
+              Voltar à página inicial
+            </Link>
           </div>
 
           <div className="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
@@ -72,7 +99,7 @@ export default function BudgetSuccessPage() {
             <ul className="list-disc pl-5 space-y-1">
               <li>Verifique a pasta de spam.</li>
               <li>Confirme que o endereço de email inserido está correto.</li>
-              <li>Se necessário, envie email para: <a href="mailto:suporte@mfn.pt">suporte@mfn.pt</a></li>
+              <li>Se necessário, responda a este email de confirmação quando o receber.</li>
             </ul>
           </div>
         </div>
