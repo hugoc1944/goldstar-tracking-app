@@ -10,8 +10,6 @@ import type { SubmitHandler, Resolver } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import Image from 'next/image';
 import { Suspense } from 'react';
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 function uniqByValue(items: {value:string; label:string; order?:number}[]) {
   const seen = new Set<string>();
