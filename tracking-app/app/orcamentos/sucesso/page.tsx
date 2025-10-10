@@ -32,14 +32,14 @@ export default function BudgetSuccessPage({
       <ClientLogger id={id} />
 
       {/* Top bar with logo */}
-      <div className="mb-6 flex items-center gap-4">
+      <div className="mb-5 flex items-center gap-4">
         <Image
-          src="/brand/logo-trackingapp_dark.png"
+          src="/brand/logo-simulador_dark.png"
           alt="Goldstar"
           width={260}
           height={60}
           priority
-          className="h-[60px] w-auto"
+          className="h-[120px] w-auto"
         />
       </div>
 
@@ -89,7 +89,7 @@ export default function BudgetSuccessPage({
             >
               Fazer novo orçamento
             </Link>
-            <Link href="/" className="text-yellow-700 hover:underline">
+            <Link href="https://mfn.pt" className="text-yellow-700 hover:underline">
               Voltar à página inicial
             </Link>
           </div>
@@ -99,7 +99,7 @@ export default function BudgetSuccessPage({
             <ul className="list-disc pl-5 space-y-1">
               <li>Verifique a pasta de spam.</li>
               <li>Confirme que o endereço de email inserido está correto.</li>
-              <li>Se necessário, responda a este email de confirmação quando o receber.</li>
+              <li>Se necessário, envie email para <a href="mailto:suporte@mfn.pt">suporte@mfn.pt</a></li>
             </ul>
           </div>
         </div>

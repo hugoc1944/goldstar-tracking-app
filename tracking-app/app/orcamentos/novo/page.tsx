@@ -9,7 +9,9 @@ import type { Catalog, CatItem, ModelRuleDTO } from '@/lib/catalog-types';
 import type { SubmitHandler, Resolver } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import Image from 'next/image';
-
+import { Suspense } from 'react';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function uniqByValue(items: {value:string; label:string; order?:number}[]) {
   const seen = new Set<string>();
@@ -165,7 +167,7 @@ export const PublicBudgetSchema = z.object({
 
 type FormValues = z.infer<typeof PublicBudgetSchema>;
 
-export default function NewBudgetPage() {
+export function BudgetFormPageInner() {
   const search = useSearchParams();
   const router = useRouter();
   const [catalog, setCatalog] = React.useState<Catalog | null>(null);
@@ -906,5 +908,13 @@ function Thumbs({ urls }:{ urls:string[] }) {
         </a>
       ))}
     </div>
+  );
+}
+
+export default function NewBudgetPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-neutral-600">A carregar…</div>}>
+      <BudgetFormPageInner />
+    </Suspense>
   );
 }
