@@ -1,0 +1,399 @@
+{
+  "MODEL_CATALOG": [
+    {
+      "section": "Portas de Abrir",
+      "baseName": "Sterling",
+      "variants": [
+        {
+          "name": "Sterling_V1"
+        },
+        {
+          "name": "Sterling_V2"
+        },
+        {
+          "name": "Sterling_V3"
+        },
+        {
+          "name": "Sterling_V4"
+        }
+      ],
+      "comingSoonImage": "/coming-soon/sterling.jpg",
+      "rules": {
+        "hideAcrylics": true,
+        "allowGlass": [
+          "transparent",
+          "frosted",
+          "monochrome"
+        ],
+        "hasFixingBar": true
+      }
+    },
+    {
+      "section": "Portas de Abrir",
+      "baseName": "DiplomataGold",
+      "variants": [
+        {
+          "name": "DiplomataGold_V1"
+        },
+        {
+          "name": "DiplomataGold_V2"
+        },
+        {
+          "name": "DiplomataGold_V3"
+        },
+        {
+          "name": "DiplomataGold_V4"
+        },
+        {
+          "name": "DiplomataGold_V5"
+        },
+        {
+          "name": "DiplomataGold_V6"
+        },
+        {
+          "name": "DiplomataGold_V7"
+        },
+        {
+          "name": "DiplomataGold_V8"
+        },
+        {
+          "name": "DiplomataGold_V9"
+        },
+        {
+          "name": "DiplomataGold_V10"
+        }
+      ],
+      "comingSoonImage": "",
+      "rules": {
+        "hideAcrylics": true,
+        "hasFixingBar": true
+      }
+    },
+    {
+      "section": "Portas de Correr",
+      "baseName": "Europa",
+      "variants": [
+        {
+          "name": "Europa_V1"
+        },
+        {
+          "name": "Europa_V2"
+        },
+        {
+          "name": "Europa_V3"
+        },
+        {
+          "name": "Europa_V4"
+        }
+      ],
+      "comingSoonImage": "",
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ],
+        "hideHandles": true
+      }
+    },
+    {
+      "section": "Portas de Correr",
+      "baseName": "Strong",
+      "variants": [
+        {
+          "name": "Strong_V1"
+        },
+        {
+          "name": "Strong_V2"
+        },
+        {
+          "name": "Strong_V3"
+        },
+        {
+          "name": "Strong_V4"
+        }
+      ],
+      "comingSoonImage": "",
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ],
+        "hideAcrylics": true,
+        "allowRack1": true
+      }
+    },
+    {
+      "section": "Fixos",
+      "baseName": "Painel Fixo",
+      "variants": [
+        {
+          "name": "PainelFixo_V1",
+          "label": ""
+        }
+      ],
+      "comingSoonImage": "",
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ],
+        "hideAcrylics": true,
+        "hideHandles": true,
+        "allowRack1": true,
+        "hasFixingBar": true
+      }
+    },
+    {
+      "section": "Fixos",
+      "baseName": "Painel",
+      "variants": [
+        {
+          "name": "Painel_V1",
+          "rules": {
+            "hideHandles": true
+          },
+          "label": "Painel GOLDSTAR"
+        }
+      ],
+      "comingSoonImage": "",
+      "rules": {
+        "hideAcrylics": true,
+        "allowRack1": true,
+        "hasFixingBar": true
+      }
+    },
+    {
+      "section": "Portas de Abrir",
+      "baseName": "Painel",
+      "variants": [
+        {
+          "name": "Painel_V2"
+        },
+        {
+          "name": "Painel_V3"
+        },
+        {
+          "name": "Painel_V4"
+        }
+      ],
+      "comingSoonImage": "",
+      "rules": {
+        "hideAcrylics": true,
+        "allowRack1": true,
+        "hasFixingBar": true
+      }
+    },
+    {
+      "section": "Portas de Abrir",
+      "baseName": "Diplomata Pivotante",
+      "variants": [
+        {
+          "name": "Diplomata Pivotante_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/DiplomataPivotante/V1.jpg"
+        },
+        {
+          "name": "Diplomata Pivotante_V2",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/DiplomataPivotante/V2.jpg"
+        }
+      ],
+      "rules": {
+        "hideAcrylics": true,
+        "hideHandles": true
+      }
+    },
+    {
+      "section": "Portas de Correr",
+      "baseName": "Splash",
+      "variants": [
+        {
+          "name": "Splash_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Splash/V1.jpg"
+        },
+        {
+          "name": "Splash_V2",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Splash/V2.jpg"
+        },
+        {
+          "name": "Splash_V3",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Splash/V3.png"
+        }
+      ],
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ],
+        "hideHandles": true
+      }
+    },
+    {
+      "section": "Portas de Correr",
+      "baseName": "Algarve",
+      "variants": [
+        {
+          "name": "Algarve_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Algarve/V1.jpg"
+        },
+        {
+          "name": "Algarve_V2",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Algarve/V2.jpg"
+        }
+      ],
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ]
+      }
+    },
+    {
+      "section": "Portas de Correr",
+      "baseName": "Meio Algarve",
+      "variants": [
+        {
+          "name": "MeioAlgarve_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/MeioAlgarve/V1.jpg"
+        },
+        {
+          "name": "MeioAlgarve_V2",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/MeioAlgarve/V2.jpg"
+        }
+      ],
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ]
+      }
+    },
+    {
+      "section": "Portas de Correr",
+      "baseName": "Meia Lua",
+      "variants": [
+        {
+          "name": "MeiaLua_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/MeiaLua/V1.jpg"
+        },
+        {
+          "name": "MeiaLua_V2",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/MeiaLua/V2.jpg"
+        }
+      ],
+      "rules": {
+        "removeFinishes": [
+          "Anodizado",
+          "Cromado"
+        ],
+        "hideAcrylics": true,
+        "hideHandles": true
+      }
+    },
+    {
+      "section": "Portas de Correr",
+      "baseName": "Las Vegas",
+      "variants": [
+        {
+          "name": "LasVegas_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/LasVegas/V1.jpg"
+        },
+        {
+          "name": "LasVegas_V2",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/LasVegas/V2.jpg"
+        }
+      ],
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ],
+        "hideHandles": true
+      }
+    },
+    {
+      "section": "Portas de Correr",
+      "baseName": "Florida",
+      "variants": [
+        {
+          "name": "Florida_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Florida/V1.png",
+          "label": ""
+        }
+      ],
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ],
+        "hideHandles": true
+      }
+    },
+    {
+      "section": "Portas de Correr",
+      "baseName": "Turbo",
+      "variants": [
+        {
+          "name": "Turbo_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Turbo/Turbo.png",
+          "label": ""
+        }
+      ],
+      "rules": {
+        "hideHandles": true
+      }
+    },
+    {
+      "section": "Portas Dobráveis",
+      "baseName": "Fole",
+      "variants": [
+        {
+          "name": "Fole_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Fole/V1.jpg"
+        },
+        {
+          "name": "Fole_Frontal",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Fole/Frontal.jpg",
+          "label": "Fole Frontal"
+        },
+        {
+          "name": "Fole_4Portas",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/Fole/4Portas.jpg",
+          "label": "Fole 4 Portas"
+        }
+      ],
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ],
+        "hideHandles": true
+      }
+    },
+    {
+      "section": "Portas Dobráveis",
+      "baseName": "Fole AP",
+      "variants": [
+        {
+          "name": "FoleAP_V1",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/FoleAP/V1.jpg",
+          "label": ""
+        }
+      ],
+      "rules": {
+        "removeFinishes": [
+          "Cromado"
+        ],
+        "hideHandles": true
+      }
+    }
+  ]
+}

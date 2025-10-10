@@ -1,0 +1,144 @@
+{
+  "FINISHES": [
+    "Branco",
+    "BrancoMate",
+    "Cromado",
+    "Cinza",
+    "Preto",
+    "GunMetal",
+    "PretoMate",
+    "PretoFosco",
+    "CremeClaro",
+    "CremeEscuro",
+    "Dourado",
+    "Castanho",
+    "Amarelo",
+    "Anodizado",
+    "AzulClaro",
+    "AzulEscuro",
+    "Vermelho",
+    "Bordeaux",
+    "Rosa",
+    "VerdeAgua",
+    "AzulTurquesa",
+    "VerdeFloresta"
+  ],
+  "FINISH_META": {
+    "Amarelo": {
+      "hex": "#d7b400",
+      "roughness": 0.35,
+      "metalness": 0
+    },
+    "Anodizado": {
+      "hex": "#B9BEC6",
+      "roughness": 0.3,
+      "normalScale": 0.35,
+      "metalness": 0.85
+    },
+    "AzulClaro": {
+      "hex": "#7aa7ff",
+      "roughness": 0.3,
+      "metalness": 0
+    },
+    "AzulEscuro": {
+      "hex": "#2e4f9b",
+      "roughness": 0.28,
+      "metalness": 0
+    },
+    "AzulTurquesa": {
+      "hex": "#2fa8a8",
+      "roughness": 0.3,
+      "metalness": 0
+    },
+    "Bordeaux": {
+      "hex": "#5c1a24",
+      "roughness": 0.32,
+      "metalness": 0
+    },
+    "Branco": {
+      "hex": "#EEF1ED",
+      "roughness": 0.14,
+      "normalScale": 0.18,
+      "metalness": 0
+    },
+    "BrancoMate": {
+      "hex": "#ECECE7",
+      "roughness": 0.62,
+      "normalScale": 0.35,
+      "metalness": 0
+    },
+    "Dourado": {
+      "hex": "#C2A46E",
+      "roughness": 0.42,
+      "metalness": 0.25,
+      "normalScale": 0.25
+    },
+    "Castanho": {
+      "hex": "#5a4638",
+      "roughness": 0.33,
+      "metalness": 0
+    },
+    "CremeClaro": {
+      "hex": "#f1e6c9",
+      "roughness": 0.32,
+      "metalness": 0
+    },
+    "CremeEscuro": {
+      "hex": "#cbb68a",
+      "roughness": 0.34,
+      "metalness": 0
+    },
+    "Cromado": {
+      "hex": "#F2F3F5",
+      "roughness": 0.04,
+      "normalScale": 0.08,
+      "metalness": 1
+    },
+    "Cinza": {
+      "hex": "#a0a0a0",
+      "roughness": 0.25,
+      "metalness": 0
+    },
+    "Preto": {
+      "hex": "#111111",
+      "roughness": 0.25,
+      "metalness": 0
+    },
+    "GunMetal": {
+      "hex": "#151515",
+      "roughness": 0.15,
+      "normalScale": 0.35,
+      "metalness": 0
+    },
+    "PretoMate": {
+      "hex": "#0f0f0f",
+      "roughness": 0.6,
+      "metalness": 0
+    },
+    "PretoFosco": {
+      "hex": "#111111",
+      "roughness": 0.5,
+      "metalness": 0
+    },
+    "Rosa": {
+      "hex": "#ff7aa8",
+      "roughness": 0.32,
+      "metalness": 0
+    },
+    "VerdeAgua": {
+      "hex": "#43c6b4",
+      "roughness": 0.3,
+      "metalness": 0
+    },
+    "VerdeFloresta": {
+      "hex": "#236b3c",
+      "roughness": 0.32,
+      "metalness": 0
+    },
+    "Vermelho": {
+      "hex": "#b81818",
+      "roughness": 0.28,
+      "metalness": 0
+    }
+  }
+}

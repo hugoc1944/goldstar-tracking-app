@@ -14,6 +14,20 @@ type PublicItem = {
   customizations?: Record<string, string | null> | null;
 };
 
+type DeliveryInfo = {
+  deliveryType?: string | null;
+  housingType?: string | null;
+  floorNumber?: number | null;
+  hasElevator?: boolean | null;
+};
+
+type Measures = {
+  widthMm?: number | null;
+  heightMm?: number | null;
+  depthMm?: number | null;
+  willSendLater?: boolean | null;
+};
+
 type Payload = {
   ref: string;
   status: Step;
@@ -21,17 +35,36 @@ type Payload = {
   eta: string | null;
   clientName: string | null;
   items: PublicItem[];
-  // from/to are Step now
   events: Array<{ from: Step; to: Step; at: string; note: string | null }>;
+
+  // NEW (optional on the API; UI is resilient)
+  delivery?: DeliveryInfo;
+  measures?: Measures;
+  photoUrls?: string[] | null;
 };
 
 /* ------------------------------- Helpers ------------------------------- */
 const CUSTOM_LABEL: Record<string, string> = {
+  // legacy
   finish: 'Acabamento',
-  acrylic: 'Acrílicos/Policarbonatos',
-  serigraphy: 'Serigrafias',
+  acrylic: 'Acrílico / Policarbonato',
+  serigraphy: 'Serigrafia',
   monochrome: 'Monocromáticos',
-  complements: 'Complementos',
+  complements: 'Complemento',
+
+  // new public/admin vocabulary
+  finishKey: 'Acabamento',
+  glassTypeKey: 'Vidro / Monocromático',
+  handleKey: 'Puxador',
+  acrylicKey: 'Acrílico / Policarbonato',
+  serigrafiaKey: 'Serigrafia',
+  serigrafiaColor: 'Cor da Serigrafia',
+  complemento: 'Complemento',
+  barColor: 'Cor da Barra Vision',
+  visionSupport: 'Cor de Suporte',
+  towelColorMode: 'Cor do Toalheiro',
+  shelfColorMode: 'Cor do Suporte',
+  fixingBarMode: 'Barra de Fixação',
 };
 
 const PT: Record<Step, string> = {
@@ -41,17 +74,47 @@ const PT: Record<Step, string> = {
   ENTREGUE: 'Entregue',
 };
 
-function formatCustomizationValue(key: string, value: string | null | undefined): string {
-  if (!value) return '—';
+function formatCustomizationValue(key: string, value: unknown): string {
+  if (value == null) return '—';
 
-  // Codes like SER006 should stay as-is
-  if (/^SER\d+$/i.test(value)) return value;
+  // arrays → comma-separated
+  if (Array.isArray(value)) {
+    return value.map(v => formatCustomizationValue(key, v)).join(', ');
+  }
+  // booleans → Sim/Não
+  if (typeof value === 'boolean') return value ? 'Sim' : 'Não';
+  // numbers → as-is
+  if (typeof value === 'number') return String(value);
+  // non-strings we can't format
+  if (typeof value !== 'string') return '—';
 
-  // Transform snake_case or ALLCAPS into normal words
-  return value
-    .toLowerCase()
-    .replace(/_/g, ' ')                 // replace underscores
-    .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize each word
+  let v = value.trim();
+  if (!v) return '—';
+
+  // ✅ Serigrafia: keep only the code (e.g. "Ser001 Silkscreen" → "SER001")
+  if (key === 'serigrafiaKey' || key === 'serigrafia' || key === 'serigraphy') {
+    const m = v.match(/(ser\d+)/i);
+    if (m) return m[1].toUpperCase();
+  }
+
+  // Keep pure SER codes intact (e.g. "SER001")
+  if (/^SER\d+$/i.test(v)) return v.toUpperCase();
+
+  // Humanize known enumerations
+  const SPECIAL: Record<string, Record<string, string>> = {
+    deliveryType:      { entrega: 'Entrega', entrega_instalacao: 'Entrega + Instalação' },
+    towelColorMode:    { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
+    shelfColorMode:    { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
+    fixingBarMode:     { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
+    serigrafiaColor:   { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
+    complemento:       { vision: 'Vision', toalheiro1: 'Toalheiro 1', prateleira: 'Prateleira (canto)', nenhum: 'Nenhum' },
+    complements:       { vision: 'Vision', toalheiro1: 'Toalheiro 1', prateleira: 'Prateleira (canto)', nenhum: 'Nenhum' },
+  };
+  const map = SPECIAL[key];
+  if (map?.[v]) return map[v];
+
+  // snake_case / ALLCAPS → Title Case
+  return v.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 const STEPS: Step[] = ['PREPARACAO', 'PRODUCAO', 'EXPEDICAO', 'ENTREGUE'];
@@ -66,6 +129,30 @@ function fmtDate(d?: string | Date | null) {
 function shortRef(id?: string) {
   if (!id) return '—';
   return `#${id.slice(0, 4)}`;
+}
+
+const fmtEUR = (c?: number | null) =>
+  typeof c === 'number'
+    ? (c / 100).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })
+    : '—';
+
+function humanizeModelName(m?: string | null) {
+  if (!m) return '—';
+  // underscores/hyphens → spaces
+  let s = m.replace(/[_-]+/g, ' ').trim();
+  // "Europa V3" (or "v3") → "Europa Variação 3"
+  s = s.replace(/\b[vV](\d+)\b/g, (_m, n) => `Variação ${n}`);
+  // Title case per space-delimited token (avoid odd Unicode boundaries)
+  s = s
+    .split(/\s+/)
+    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(' ');
+  return s;
+}
+function pickUrl(anyVal: any): string | null {
+  if (!anyVal) return null;
+  if (typeof anyVal === 'string') return anyVal;
+  return anyVal.url ?? anyVal.href ?? anyVal.fileUrl ?? anyVal.downloadUrl ?? anyVal.src ?? null;
 }
 
 function Meta({ label, value }: { label: string; value: string }) {
@@ -328,61 +415,183 @@ export default function PublicOrderPage({
           </div>
 
           {/* order details */}
+          {/* order details */}
           <div className="border-b border-neutral-200 px-6 py-6">
             <h3 className="mb-4 text-[17px] font-bold text-neutral-900">Detalhes do pedido</h3>
 
             <div className="grid gap-6 md:grid-cols-2">
-              {/* Coluna esquerda: Modelos (cada item) */}
+              {/* ESQUERDA: Modelo e customizações */}
               <div className="rounded-xl bg-neutral-50 p-4">
-                <h4 className="mb-2 text-sm font-medium text-neutral-700">Modelos</h4>
-
-                {data?.items?.length ? (
-                  <ul className="list-disc pl-5 text-[14px] text-neutral-800 space-y-1">
-                    {data.items.map((it, idx) => (
-                      <li key={idx}>
-                        {/* Mostra, de preferência, o modelo; se não houver, usa a descrição */}
-                        <span className="font-semibold">{pretty(it.model) !== '—' ? it.model : it.description}</span>
-                        {it.quantity > 1 ? (
-                          <span className="text-neutral-600">{` (${it.quantity})`}</span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-neutral-500">Sem itens.</div>
-                )}
-              </div>
-
-              {/* Coluna direita: Customizações (do primeiro item "detalhes do produto") */}
-              <div className="rounded-xl bg-neutral-50 p-4">
-                <h4 className="mb-2 text-sm font-medium text-neutral-700">Customizações</h4>
-
+                <h4 className="mb-2 text-sm font-medium text-neutral-700">Modelo e customizações</h4>
                 {(() => {
-                  const base = data?.items?.[0]; // o primeiro item costuma ser “Detalhes do produto”
-                  const rows: Array<{ k: string; v: string | null | undefined }> = [];
+                  const base = data?.items?.[0];
+                  if (!base) return <div className="text-neutral-500">Sem itens.</div>;
 
-                  if (base?.complements) {
-                    rows.push({ k: 'complements', v: base.complements });
-                  }
-                  if (base?.customizations) {
-                    for (const [k, v] of Object.entries(base.customizations)) {
-                      rows.push({ k, v });
+                  // Build rows in a friendly, ordered way
+                  type Row = { label: string; value: string };
+                  const rows: Row[] = [];
+                  const seen = new Set<string>();
+                  // 1) Modelo
+                  rows.push({
+                    label: 'Modelo',
+                    value: humanizeModelName(base.model || base.description),
+                  });
+
+                  // 2) Complemento (se existir e não for "Nenhum")
+                  if (base.complements != null) {
+                    const compText = formatCustomizationValue('complements', base.complements);
+                    if (compText && compText !== 'Nenhum' && compText !== '—') {
+                      rows.push({ label: CUSTOM_LABEL['complements'], value: compText });
+                      seen.add('complemento');
                     }
                   }
 
-                  if (!rows.length) {
-                    return <div className="text-[14px] text-neutral-600">Sem informação adicional.</div>;
+                  // 3) Customizações selecionadas — ordenadas e sem “Nenhum”
+                  const ORDERED_KEYS = [
+                    'handleKey',
+                    'finishKey',
+                    'glassTypeKey',
+                    'acrylicKey',
+                    'serigrafiaKey',
+                    'serigrafiaColor',
+                    'barColor',
+                    'visionSupport',
+                    'towelColorMode',
+                    'shelfColorMode',
+                    'fixingBarMode',
+                    'complemento',
+                  ];
+                  const EXCLUDE = new Set([
+                    // não listar aqui
+                    'widthMm',
+                    'heightMm',
+                    'depthMm',
+                    'willSendLater',
+                    'quotedPdfUrl',
+                    'sourceBudgetId',
+                    'photoUrls',
+                    'priceCents',
+                    'installPriceCents',
+                    'modelKey',
+                  ]);
+
+                  const cust = base.customizations ?? {};
+                  // ordered pass
+                  for (const k of ORDERED_KEYS) {
+                    if (!(k in cust) || EXCLUDE.has(k)) continue;
+                    const fv = formatCustomizationValue(k, (cust as any)[k]);
+                    if (k === 'complemento' && seen.has('complemento')) continue;
+                    if (!fv || fv === 'Nenhum' || fv === '—') continue;
+                    rows.push({ label: CUSTOM_LABEL[k] ?? k, value: fv });
+                  }
+                  // any remaining keys (but not excluded)
+                  for (const [k, v] of Object.entries(cust)) {
+                    if (EXCLUDE.has(k) || ORDERED_KEYS.includes(k)) continue;
+                    const fv = formatCustomizationValue(k, v);
+                    if (!fv || fv === 'Nenhum' || fv === '—') continue;
+                    rows.push({ label: CUSTOM_LABEL[k] ?? k, value: fv });
                   }
 
-                  return (
+                  // 4) Preço(s) no fim
+                  const asNumber = (x: any) => {
+                    if (x == null) return null;
+                    const n = typeof x === 'string' ? Number(x) : x;
+                    return typeof n === 'number' && !Number.isNaN(n) ? n : null;
+                  };
+                  const priceCents =
+                    asNumber((cust as any).priceCents) ?? (asNumber((base as any).priceCents) ?? null);
+                  const installCents =
+                    asNumber((cust as any).installPriceCents) ??
+                    (asNumber((base as any).installPriceCents) ?? null);
+
+                  if (installCents != null) {
+                    rows.push({ label: 'Preço de instalação', value: fmtEUR(installCents) });
+                  }
+                  if (priceCents != null) {
+                    rows.push({ label: 'Preço', value: fmtEUR(priceCents) });
+                  }
+
+                  return rows.length ? (
                     <ul className="space-y-1 text-[14px]">
-                      {rows.map(({ k, v }) => (
-                        <li key={k}>
-                          <span className="font-medium">{CUSTOM_LABEL[k] ?? k}:</span>{' '}
-                          {formatCustomizationValue(k, v)}
+                      {rows.map((r, i) => (
+                        <li key={`${r.label}-${i}`}>
+                          <span className="font-medium">{r.label}:</span> {r.value}
                         </li>
                       ))}
                     </ul>
+                  ) : (
+                    <div className="text-[14px] text-neutral-600">Sem informação adicional.</div>
+                  );
+                })()}
+              </div>
+
+              {/* DIREITA: Informação Adicional (Medidas + Entrega/Instalação) */}
+              <div className="rounded-xl bg-neutral-50 p-4">
+                <h4 className="mb-2 text-sm font-medium text-neutral-700">Informação Adicional</h4>
+
+                {(() => {
+                  const base = data?.items?.[0];
+                  const cust = (base?.customizations ?? {}) as Record<string, any>;
+
+                  // Medidas via payload; se vazio, cair nos customizations do item
+                  const wMm =
+                    data?.measures?.widthMm ?? (cust.widthMm != null ? Number(cust.widthMm) : null);
+                  const hMm =
+                    data?.measures?.heightMm ?? (cust.heightMm != null ? Number(cust.heightMm) : null);
+                  const dMm =
+                    data?.measures?.depthMm ?? (cust.depthMm != null ? Number(cust.depthMm) : null);
+
+                  const toCm = (mm?: number | null) => (mm == null ? '—' : `${Math.round(mm / 10)} cm`);
+
+                  return (
+                    <div className="grid gap-4 md:grid-cols-1">
+                      {/* Medidas */}
+                      <div className="rounded-lg bg-white/60 p-3">
+                        <h5 className="mb-1 text-xs font-semibold text-neutral-700 uppercase tracking-wide">
+                          Medidas
+                        </h5>
+                        <ul className="space-y-1 text-[14px]">
+                          <li>
+                            <span className="font-medium">Largura:</span> {toCm(wMm)}
+                          </li>
+                          <li>
+                            <span className="font-medium">Altura:</span> {toCm(hMm)}
+                          </li>
+                          <li>
+                            <span className="font-medium">Profundidade:</span> {toCm(dMm)}
+                          </li>
+                        </ul>
+                      </div>
+
+                      {/* Entrega / Instalação */}
+                      <div className="rounded-lg bg-white/60 p-3">
+                        <h5 className="mb-1 text-xs font-semibold text-neutral-700 uppercase tracking-wide">
+                          Entrega / Instalação
+                        </h5>
+                        {(() => {
+                          const d = data?.delivery;
+                          return (
+                            <ul className="space-y-1 text-[14px]">
+                              <li>
+                                <span className="font-medium">Tipo:</span>{' '}
+                                {formatCustomizationValue('deliveryType', d?.deliveryType)}
+                              </li>
+                              <li>
+                                <span className="font-medium">Habitação:</span>{' '}
+                                {formatCustomizationValue('housingType', d?.housingType)}
+                              </li>
+                              <li>
+                                <span className="font-medium">Andar:</span> {d?.floorNumber ?? '—'}
+                              </li>
+                              <li>
+                                <span className="font-medium">Elevador:</span>{' '}
+                                {d?.hasElevator == null ? '—' : d.hasElevator ? 'Sim' : 'Não'}
+                              </li>
+                            </ul>
+                          );
+                        })()}
+                      </div>
+                    </div>
                   );
                 })()}
               </div>

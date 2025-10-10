@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { Home, ClipboardList, Users, LogOut } from 'lucide-react';
+import { Home, ClipboardList, Users, LogOut, FileText  } from 'lucide-react';
 
 function NavItem({
   href, label, icon, active,
@@ -68,6 +68,12 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             label="Clientes"
             icon={<Users size={18} />}
             active={pathname?.startsWith('/admin/clients')}
+          />
+          <NavItem
+            href="/admin/orcamentos"
+            label="Orçamentos"
+            icon={<FileText size={18} />}
+            active={pathname?.startsWith('/admin/orcamentos')}
           />
         </nav>
 

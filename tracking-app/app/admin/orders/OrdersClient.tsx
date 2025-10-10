@@ -170,63 +170,162 @@ export default function OrdersClient() {
     setLoading(false);
   };
 
-  // lazy load payload for EditOrderModal
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!editFor) return;
-      setEditLoading(true);
-      setEditPayload(null);
+function decodeComplements(raw: any, custom: any) {
+  // We store Vision colors either in complements JSON or in customizations.
+  // Normalize to a single shape the modal expects.
+  let code = 'DIVERSOS';
+  let barColor = '';
+  let visionSupport = '';
+  let towelColorMode = '';
+  let shelfColorMode = '';
 
-      const r = await fetch(`/api/orders/${editFor}`, { cache: 'no-store' });
-      if (!alive) return;
-
-      if (r.ok) {
-        const data = await r.json();
-        const first = data.items?.[0] ?? {};
-        const custom = (first?.customizations ?? {}) as any;
-
-        const complementsCode = (() => {
-          const raw = first?.complements as any;
-          if (!raw || raw === 'null') return 'DIVERSOS';
-          if (typeof raw === 'string') {
-            try {
-              const o = JSON.parse(raw);
-              return o?.code ?? raw ?? 'DIVERSOS';
-            } catch {
-              return raw || 'DIVERSOS';
-            }
-          }
-          if (typeof raw === 'object') return (raw as any)?.code ?? 'DIVERSOS';
-          return 'DIVERSOS';
-        })();
-
-        setEditPayload({
-          id: data.id,
-          tracking: data.trackingNumber ?? '',
-          client: {
-            phone:  data.customer?.phone  ?? '',
-            address:data.customer?.address?? '',
-            postal: data.customer?.postal ?? '',
-            city:   data.customer?.city   ?? '',
-          },
-          details: {
-            model:       first?.model ?? 'DIVERSOS',
-            finish:      custom.finish      ?? 'DIVERSOS',
-            acrylic:     custom.acrylic     ?? 'DIVERSOS',
-            serigraphy:  custom.serigraphy  ?? 'DIVERSOS',
-            monochrome:  custom.monochrome  ?? 'DIVERSOS',
-            complements: complementsCode,
-          },
-          files: (data.filesJson as any[]) ?? [],
-        });
+  try {
+    if (typeof raw === 'string') {
+      const maybeObj = JSON.parse(raw);
+      if (maybeObj && typeof maybeObj === 'object') {
+        code = maybeObj.code ?? raw ?? 'DIVERSOS';
+        barColor = maybeObj.barColor ?? '';
+        visionSupport = maybeObj.visionSupport ?? '';
+        towelColorMode = maybeObj.towelColorMode ?? '';
+        shelfColorMode = maybeObj.shelfColorMode ?? '';
       } else {
-        setEditFor(null);
+        code = raw || 'DIVERSOS';
       }
+    } else if (raw && typeof raw === 'object') {
+      code = raw.code ?? 'DIVERSOS';
+      barColor = raw.barColor ?? '';
+      visionSupport = raw.visionSupport ?? '';
+      towelColorMode = raw.towelColorMode ?? '';
+      shelfColorMode = raw.shelfColorMode ?? '';
+    }
+  } catch {
+    // raw was a plain string like "vision" / "nenhum"
+    if (typeof raw === 'string') code = raw || 'DIVERSOS';
+  }
+
+  // fallbacks from customizations if not in complements
+  if (!barColor) barColor = custom?.barColor ?? '';
+  if (!visionSupport) visionSupport = custom?.visionSupport ?? '';
+  if (!towelColorMode) towelColorMode = custom?.towelColorMode ?? '';
+  if (!shelfColorMode) shelfColorMode = custom?.shelfColorMode ?? '';
+
+  return { code, barColor, visionSupport, towelColorMode, shelfColorMode };
+}
+
+  // lazy load payload for EditOrderModal
+useEffect(() => {
+  let alive = true;
+  (async () => {
+    if (!editFor) return;
+    setEditLoading(true);
+    setEditPayload(null);
+
+    const r = await fetch(`/api/orders/${editFor}`, { cache: 'no-store' });
+    if (!alive) return;
+
+    if (!r.ok) {
+      setEditFor(null);
       setEditLoading(false);
-    })();
-    return () => { alive = false; };
-  }, [editFor]);
+      return;
+    }
+
+    const data = await r.json();
+
+    // Prefer the "forModal" shape if your API now returns it
+    if (data.forModal) {
+      const f = data.forModal;
+      setEditPayload({
+    id: f.id,
+    tracking: data.trackingNumber ?? '',
+    client: {
+      name:  data.customer?.name  ?? '',
+      email: data.customer?.email ?? '',
+      phone:  f.client?.phone      ?? '',
+      address:f.client?.address    ?? '',
+      postal: f.client?.postal     ?? '',
+      city:   f.client?.city       ?? '',
+    },
+    details: {
+      model:           f.details?.model           ?? 'DIVERSOS',
+      handleKey:       f.details?.handleKey       ?? '',
+      finish:          f.details?.finish          ?? 'DIVERSOS',
+      glassTypeKey:    f.details?.glassTypeKey    ?? '',
+      acrylic:         f.details?.acrylic         ?? 'DIVERSOS',
+      serigraphy:      f.details?.serigraphy      ?? 'DIVERSOS',
+      serigrafiaColor: f.details?.serigrafiaColor ?? '',
+      complements:     f.details?.complements     ?? 'DIVERSOS',
+      barColor:        f.details?.barColor        ?? '',
+      visionSupport:   f.details?.visionSupport   ?? '',
+      towelColorMode:  f.details?.towelColorMode  ?? '',
+      shelfColorMode:  f.details?.shelfColorMode  ?? '',
+      fixingBarMode:   f.details?.fixingBarMode   ?? '',
+    },
+
+    // ✅ NEW: forward delivery so EditOrderModal can prefill
+    delivery: {
+      deliveryType: f.delivery?.deliveryType ?? null,
+      housingType:  f.delivery?.housingType  ?? null,
+      floorNumber:  f.delivery?.floorNumber  ?? null,
+      hasElevator:  f.delivery?.hasElevator  ?? null,
+    },
+
+    files: Array.isArray(data.filesJson) ? data.filesJson : [],
+  });
+  setEditLoading(false);
+  return;
+}
+
+    // Back-compat: build from items/customizations if "forModal" isn’t present
+    const first = data.items?.[0] ?? {};
+    const custom = (first?.customizations ?? {}) as any;
+
+    const {
+      code: complementsCode,
+      barColor,
+      visionSupport,
+      towelColorMode,
+      shelfColorMode,
+    } = decodeComplements(first?.complements, custom);
+
+    setEditPayload({
+      id: data.id,
+      tracking: data.trackingNumber ?? '',
+      client: {
+        name:  data.customer?.name  ?? '',
+        email: data.customer?.email ?? '',
+        phone:  data.customer?.phone  ?? '',
+        address:data.customer?.address?? '',
+        postal: data.customer?.postal ?? '',
+        city:   data.customer?.city   ?? '',
+      },
+      details: {
+        model:           first?.model ?? 'DIVERSOS',
+        handleKey:       custom.handleKey ?? '',
+        finish:          custom.finish    ?? 'DIVERSOS',
+        glassTypeKey:    custom.glassTypeKey ?? custom.glassType ?? '',
+        acrylic:         custom.acrylic   ?? 'DIVERSOS',
+        serigraphy:      custom.serigraphy?? 'DIVERSOS',
+        serigrafiaColor: custom.serigrafiaColor ?? '',
+        complements:     complementsCode,
+        barColor,
+        visionSupport,
+        towelColorMode,
+        shelfColorMode,
+        fixingBarMode:   custom.fixingBarMode ?? '',
+      },
+      delivery: {
+        deliveryType: (data as any).deliveryType ?? null,
+        housingType:  (data as any).housingType  ?? null,
+        floorNumber:  (data as any).floorNumber  ?? null,
+        hasElevator:  (data as any).hasElevator  ?? null,
+      },
+      files: Array.isArray(data.filesJson) ? data.filesJson : [],
+    });
+
+    setEditLoading(false);
+  })();
+  return () => { alive = false; };
+}, [editFor]);
 
   // load model filter options
   const [modelOpts, setModelOpts] = useState<{ value: string; label: string }[]>([]);
