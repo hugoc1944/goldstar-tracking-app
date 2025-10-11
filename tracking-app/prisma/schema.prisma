@@ -39,6 +39,9 @@ model Order {
   floorNumber    Int?
   hasElevator    Boolean?
 
+  confirmedAt          DateTime?        // null until client confirms
+  createdFromBudget Budget? @relation(name: "BudgetToOrder")
+
   @@index([status])
   @@index([publicToken])
 }
@@ -143,6 +146,10 @@ model Budget {
   quotedPdfUrl      String?
   deletedAt         DateTime?
 
+  sentAt           DateTime?          // set when email is sent
+  confirmedAt      DateTime?          // set when client confirms
+  convertedOrderId String?            @unique
+  convertedOrder   Order?   @relation(name: "BudgetToOrder", fields: [convertedOrderId], references: [id])
   @@index([createdAt])
   @@index([email])
 }

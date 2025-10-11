@@ -382,6 +382,20 @@ React.useEffect(() => {
     [serPrime, serQuadros, serElo]
   );
 
+  const allGlassOptions = React.useMemo(
+    () => [ ...(glassTipos ?? []), ...(monos ?? []) ],
+    [glassTipos, monos]
+  );
+
+  // Try match by label or value "Transparente"
+  const transparentGlassValue = React.useMemo(() => {
+    return (
+      matchOption(allGlassOptions, 'Transparente') ||
+      matchOption(allGlassOptions, 'transparente') ||
+      allGlassOptions.find(o => o.value.toLowerCase() === 'transparente')?.value
+    );
+  }, [allGlassOptions]);
+
   const allowAcrylic = !!rule?.allowAcrylicAndPoly;
   const allowTowel1 = !!rule?.allowTowel1;
   const hideHandles = !!rule?.hideHandles;
@@ -487,6 +501,56 @@ React.useEffect(() => {
       }
     }, [selSer]);
 
+    const wGlass = form.watch('glassTypeKey');
+    const wSer = form.watch('serigrafiaKey');
+    const wAcr = form.watch('acrylicKey');
+
+// -- synchronous compatibility handlers (avoid double-click) --
+const handleGlassChange = (nextVal: string) => {
+  form.setValue('glassTypeKey', nextVal, { shouldDirty: true });
+  // If glass is NOT Transparente → clear incompatible fields immediately
+  if (transparentGlassValue && nextVal !== transparentGlassValue) {
+    const currSer = form.getValues('serigrafiaKey') ?? 'nenhum';
+    const currAcr = form.getValues('acrylicKey') ?? 'nenhum';
+    if (currSer !== 'nenhum') {
+      form.setValue('serigrafiaKey', 'nenhum', { shouldDirty: true });
+      form.setValue('serigrafiaColor', undefined, { shouldDirty: true });
+    }
+    if (currAcr !== 'nenhum') {
+      form.setValue('acrylicKey', 'nenhum', { shouldDirty: true });
+    }
+  }
+};
+
+const handleSerigrafiaChange = (nextVal: string | undefined) => {
+  const v = nextVal ?? 'nenhum';
+  form.setValue('serigrafiaKey', v, { shouldDirty: true });
+  if (v !== 'nenhum') {
+    // serigrafia requires Vidro: Transparente and no acrílico
+    if (transparentGlassValue) {
+      form.setValue('glassTypeKey', transparentGlassValue, { shouldDirty: true });
+    }
+    if ((form.getValues('acrylicKey') ?? 'nenhum') !== 'nenhum') {
+      form.setValue('acrylicKey', 'nenhum', { shouldDirty: true });
+    }
+  }
+};
+
+const handleAcrylicChange = (nextVal: string | undefined) => {
+  const v = nextVal ?? 'nenhum';
+  form.setValue('acrylicKey', v, { shouldDirty: true });
+  if (v !== 'nenhum') {
+    // acrílico requires Vidro: Transparente and no serigrafia
+    if (transparentGlassValue) {
+      form.setValue('glassTypeKey', transparentGlassValue, { shouldDirty: true });
+    }
+    if ((form.getValues('serigrafiaKey') ?? 'nenhum') !== 'nenhum') {
+      form.setValue('serigrafiaKey', 'nenhum', { shouldDirty: true });
+      form.setValue('serigrafiaColor', undefined, { shouldDirty: true });
+    }
+  }
+};
+
 function isAbrirModel(key?: string) {
   if (!key) return false;
   const k = key.toLowerCase();
@@ -549,6 +613,29 @@ const groupedModels = React.useMemo(() => {
   return ordered;
 }, [catalog]);
 
+
+// Build the `model` query for the external simulator from the current model
+const simModelParam = React.useMemo(() => {
+  const current = (form.getValues('modelKey') || '').trim();
+  if (!current) return '';
+
+  // Normalize separators
+  const parts = current.replace(/-/g, '_').split('_').filter(Boolean);
+
+  // Detect trailing vN (case-insensitive)
+  const tail = parts[parts.length - 1] || '';
+  const vMatch = tail.match(/^v(\d+)$/i);
+
+  // Base = everything before vN; join as PascalCase with NO separators
+  const baseParts = vMatch ? parts.slice(0, -1) : parts;
+  const basePascal = baseParts
+    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join('');
+
+  // If we had a version, append _Vn
+  return vMatch ? `${basePascal}_V${vMatch[1]}` : basePascal;
+}, [modelKey]);
+
 const fileInputRef = React.useRef<HTMLInputElement>(null);
 
 React.useEffect(() => {
@@ -570,15 +657,32 @@ React.useEffect(() => {
     {/* Top bar with simulator logo (left) */}
     <div className="mb-5 flex items-center gap-4">
       <Image
-        src="/brand/logo-simulador_dark.png"
+        src="/brand/logo-trackingapp_dark.png"
         alt="Goldstar Simulator"
         width={220}
         height={48}
         priority
         className="h-[120px] w-auto"
       />
-      <div className="ml-auto text-sm text-neutral-500">
-        {/* space for help text if needed */}
+      <div className="ml-auto">
+        <a
+          href={`https://simulador.mfn.pt/?model=${encodeURIComponent(simModelParam)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-xl bg-[#122C4F] px-3 py-2 text-white hover:bg-black/90
+                    focus:outline-none focus:ring-2 focus:ring-yellow-400/50
+                    shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]"
+        >
+          <Image
+            src="/brand/sim_icon.png"
+            alt=""
+            width={40}
+            height={40}
+            className="h-10 w-10"
+            priority
+          />
+          <span className="text-[15px] font-semibold">Ver no Simulador</span>
+        </a>
       </div>
     </div>
 
@@ -656,20 +760,50 @@ React.useEffect(() => {
                 />
               )}
 
-              <Select
-                f={form}
-                name="glassTypeKey"
+              <FieldWrap
                 label="Vidro / Monocromático *"
-                options={[...(glassTipos ?? []), ...(monos ?? [])]}
-              />
+                error={form.formState.errors?.['glassTypeKey']?.message as string | undefined}
+              >
+                <Controller
+                  name="glassTypeKey"
+                  control={form.control}
+                  render={({ field }) => (
+                    <select
+                      {...field}
+                      onChange={(e) => handleGlassChange(e.target.value)}
+                      value={(field.value ?? '') as string}
+                      className="w-full border rounded px-3 py-2 bg-white"
+                    >
+                      {[...(glassTipos ?? []), ...(monos ?? [])].map((o, i) => (
+                        <option key={`${o.value}-${i}`} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  )}
+                />
+              </FieldWrap>
 
               {allowAcrylic && (
-                <Select
-                  f={form}
-                  name="acrylicKey"
+                <FieldWrap
                   label="Acrílico / Policarbonato"
-                  options={catalog?.ACRYLIC_AND_POLICARBONATE ?? []}
-                />
+                  error={form.formState.errors?.['acrylicKey']?.message as string | undefined}
+                >
+                  <Controller
+                    name="acrylicKey"
+                    control={form.control}
+                    render={({ field }) => (
+                      <select
+                        {...field}
+                        onChange={(e) => handleAcrylicChange(e.target.value || undefined)}
+                        value={(field.value ?? '') as string}
+                        className="w-full border rounded px-3 py-2 bg-white"
+                      >
+                        {(catalog?.ACRYLIC_AND_POLICARBONATE ?? []).map((o, i) => (
+                          <option key={`${o.value}-${i}`} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    )}
+                  />
+                </FieldWrap>
               )}
 
               <Select f={form} name="complemento" label="Complemento *" options={complemento} />
@@ -705,7 +839,27 @@ React.useEffect(() => {
                 />
               )}
 
-              <Select f={form} name="serigrafiaKey" label="Serigrafia" options={serigrafias} />
+              <FieldWrap
+                label="Serigrafia"
+                error={form.formState.errors?.['serigrafiaKey']?.message as string | undefined}
+              >
+                <Controller
+                  name="serigrafiaKey"
+                  control={form.control}
+                  render={({ field }) => (
+                    <select
+                      {...field}
+                      onChange={(e) => handleSerigrafiaChange(e.target.value || undefined)}
+                      value={(field.value ?? '') as string}
+                      className="w-full border rounded px-3 py-2 bg-white"
+                    >
+                      {serigrafias.map((o, i) => (
+                        <option key={`${o.value}-${i}`} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  )}
+                />
+              </FieldWrap>
               {selSer && selSer !== 'nenhum' && (
                 <Select
                   f={form}

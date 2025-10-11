@@ -80,16 +80,24 @@ export default async function AdminBudgetsPage({
                 <td className="px-4 py-3">{b.email}</td>
                 <td className="px-4 py-3">{b.modelKey}</td>
                 <td className="px-4 py-3">
-                  {!b.deletedAt ? (
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                      Ativo
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
-                      Apagado
-                    </span>
-                  )}
-                </td>
+                {b.deletedAt ? (
+                  <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+                    Apagado
+                  </span>
+                ) : !b.sentAt ? (
+                  <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                    Não enviado
+                  </span>
+                ) : !b.confirmedAt ? (
+                  <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                    Aguarda Confirmação
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    Confirmado
+                  </span>
+                )}
+              </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-3">
                     <Link className="text-yellow-700 hover:underline" href={`/admin/orcamentos/${b.id}`}>Abrir</Link>

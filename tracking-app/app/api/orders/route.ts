@@ -225,6 +225,7 @@ export async function GET(req: Request) {
   if (search.startsWith('#')) search = search.slice(1);
 
   const where: any = {};
+  where.confirmedAt = { not: null };
   if (status) where.status = status;
 
   if (search) {

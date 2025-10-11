@@ -28,7 +28,7 @@ export default function BudgetSuccessPage({
       {/* Top bar with logo */}
       <div className="mb-5 flex items-center gap-4">
         <Image
-          src="/brand/logo-simulador_dark.png"
+          src="/brand/logo-trackingapp_dark.png"
           alt="Goldstar"
           width={260}
           height={60}
@@ -70,8 +70,9 @@ export default function BudgetSuccessPage({
           </div>
 
           <p className="text-[15px] text-neutral-800">
-            Obrigado pelo contacto. A nossa equipa irá rever o seu pedido e enviar-lhe o
-            orçamento por email. Por favor <strong>esteja atento ao seu email durante a próxima semana</strong>.
+            Obrigado pelo contacto. <strong>Enviámos agora um email de confirmação</strong> para o endereço que indicou.
+            A nossa equipa vai analisar o seu pedido e enviar-lhe o orçamento em breve.
+            Por favor verifique a sua caixa de entrada.
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">

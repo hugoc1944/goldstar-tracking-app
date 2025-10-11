@@ -41,6 +41,9 @@ type Payload = {
   delivery?: DeliveryInfo;
   measures?: Measures;
   photoUrls?: string[] | null;
+
+  requiresConfirmation?: boolean;
+  pdfUrl?: string | null; 
 };
 
 /* ------------------------------- Helpers ------------------------------- */
@@ -89,6 +92,10 @@ function formatCustomizationValue(key: string, value: unknown): string {
   if (typeof value !== 'string') return '—';
 
   let v = value.trim();
+  if ((key === 'handleKey' || key === 'handle') && /^h(\d)$/i.test(v)) {
+    const n = v.match(/^h(\d)$/i)![1];
+    return `Puxador ${n}`;
+  }
   if (!v) return '—';
 
   // ✅ Serigrafia: keep only the code (e.g. "Ser001 Silkscreen" → "SER001")
@@ -297,6 +304,18 @@ export default function PublicOrderPage({
   }
 }
 
+  async function confirmOrder() {
+    try {
+      const r = await fetch(`/api/pedido/${publicToken}/confirm`, { method: 'POST' });
+      if (!r.ok) throw new Error('Falha ao confirmar');
+      // refetch status
+      const rr = await fetch(`/api/pedido/${publicToken}/status`, { cache: 'no-store' });
+      setData(await rr.json());
+    } catch {
+      alert('Não foi possível confirmar. Tente novamente.');
+    }
+  }
+
   return (
     <div className="relative min-h-screen" style={{ backgroundColor: '#fcfbfc', padding: 20}}>
       {/* top bar with logo left */}
@@ -330,6 +349,7 @@ export default function PublicOrderPage({
           </div>
 
         {/* status rail */}
+        {!data?.requiresConfirmation && (
         <div className="border-b border-neutral-200 px-6 py-6">
           <h3 className="mb-4 text-[17px] font-bold text-neutral-900">
             Tracking do pedido
@@ -381,6 +401,39 @@ export default function PublicOrderPage({
             </div>
           </div>
         </div>
+        )}
+
+
+
+        {data?.requiresConfirmation && (
+          <div className="border-b border-neutral-200 px-6 py-6">
+            <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
+              <h3 className="mb-1 text-[17px] font-bold text-neutral-900">Confirmação do Orçamento</h3>
+              <p className="mb-3 text-[14px] text-neutral-700">
+                Para iniciarmos a preparação do seu pedido, confirme o orçamento.
+              </p>
+                {data?.pdfUrl && (
+                <a
+                  href={data.pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mr-3 inline-flex items-center justify-center h-11 rounded-xl border border-neutral-300 px-6
+                            text-[15px] font-semibold text-neutral-900 bg-white hover:bg-neutral-50"
+                >
+                  Ver Orçamento
+                </a>
+              )}
+              <button
+                onClick={confirmOrder}
+                className="h-11 rounded-xl bg-black px-6 text-[15px] font-semibold text-white hover:bg-black/90
+                        focus:outline-none focus:ring-2 focus:ring-yellow-400/50
+                        shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]"
+              >
+                Confirmo o Orçamento
+              </button>
+            </div>
+          </div>
+        )}
 
           {/* support / message */}
           <div className="border-b border-neutral-200 px-6 py-6">
@@ -416,6 +469,7 @@ export default function PublicOrderPage({
 
           {/* order details */}
           {/* order details */}
+          {!data?.requiresConfirmation && (
           <div className="border-b border-neutral-200 px-6 py-6">
             <h3 className="mb-4 text-[17px] font-bold text-neutral-900">Detalhes do pedido</h3>
 
@@ -597,8 +651,8 @@ export default function PublicOrderPage({
               </div>
             </div>
           </div>
+          )}
 
-          {/* client details */}
           <div className="px-6 py-6">
             <h3 className="mb-4 text-[17px] font-bold text-neutral-900">Detalhes do cliente</h3>
             <div className="rounded-xl bg-neutral-50 p-4">
@@ -616,7 +670,7 @@ export default function PublicOrderPage({
                 </div>
               </div>
             </div>
-          </div>
+          </div> 
         </section>
 
         

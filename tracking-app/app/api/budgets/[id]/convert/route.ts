@@ -8,6 +8,8 @@ import { Resend } from 'resend';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { render } from '@react-email/render';
+import { BudgetSentEmail } from '@/emails/BudgetSent';
 
 export const runtime = 'nodejs';
 
@@ -78,39 +80,7 @@ export async function POST(req: Request, { params }: Ctx) {
     data: { quotedPdfUrl: blob.url },
   });
 
-  // 7) Email via Resend (optional)
-  let emailStatus: 'sent' | 'failed' | 'skipped' = 'skipped';
-  const resendKey = process.env.RESEND_API_KEY;
-  if (resendKey) {
-    const resend = new Resend(resendKey);
-    const total = ((saved.priceCents ?? 0) + (saved.installPriceCents ?? 0)) / 100;
-    const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
-
-    const result = await resend.emails.send({
-      from: `GOLDSTAR <${fromAddr}>`,
-      to: saved.email,
-      subject: 'Orçamento GOLDSTAR',
-      text: [
-        `Olá ${saved.name},`,
-        ``,
-        `Segue em anexo o seu orçamento.`,
-        `Total: ${total.toFixed(2)} €`,
-        ``,
-        `Cumprimentos,`,
-        `GOLDSTAR`,
-      ].join('\n'),
-      attachments: [{ filename: 'orcamento.pdf', path: blob.url }],
-    });
-
-    if (result?.error) {
-      console.warn('Resend send error:', result.error);
-      emailStatus = 'failed';
-    } else {
-      emailStatus = 'sent';
-    }
-  } else {
-    console.warn('RESEND_API_KEY missing; skipping email send');
-  }
+ 
 
   // 8) Upsert Customer (by email)
   const customer = await prisma.customer.upsert({
@@ -138,82 +108,113 @@ export async function POST(req: Request, { params }: Ctx) {
   const publicToken = crypto.randomBytes(24).toString('base64url');
 
   // Pack customizations the way your Orders UI reads them
-  const customizations: Record<string, any> = {
-    finish: saved.finishKey ?? null,
-    acrylic: saved.acrylicKey ?? null,
-    serigraphy: saved.serigrafiaKey ?? null,
-    serigrafiaColor: saved.serigrafiaColor ?? null,
-    glassTypeKey: saved.glassTypeKey ?? null,
-    handleKey: saved.handleKey ?? null,
-    fixingBarMode: saved.fixingBarMode ?? null,
+  // 9) Create a MINIMAL pending Order (no createdFromBudgetId here)
+const baseOrderData: Prisma.OrderCreateArgs['data'] = {
+  customer: { connect: { id: customer.id } },
+  status: 'PREPARACAO',     // it will only become visible after confirm if your admin lists filter by confirmedAt
+  confirmedAt: null,        // explicitly pending
+  eta: null,
+  trackingNumber: null,
+  publicToken,
+  filesJson: Array.isArray(saved.photoUrls) ? (saved.photoUrls as any) : undefined,
+  // NOTE: intentionally NOT creating items here; add later if you want after confirm
+};
 
-    barColor: saved.complemento === 'vision' ? saved.barColor ?? null : null,
-    visionSupport: saved.complemento === 'vision' ? saved.visionSupport ?? null : null,
-    towelColorMode: saved.complemento === 'toalheiro1' ? saved.towelColorMode ?? null : null,
-    shelfColorMode: saved.complemento === 'prateleira' ? saved.shelfColorMode ?? null : null,
-  };
+// Try with delivery fields (if they exist in your schema); fallback if not
+const withDelivery: any = {
+  ...baseOrderData,
+  deliveryType: saved.deliveryType ?? null,
+  housingType:  saved.housingType  ?? null,
+  floorNumber:  saved.floorNumber  ?? null,
+  hasElevator:  saved.hasElevator  ?? null,
+};
 
-  const baseOrderData: Prisma.OrderCreateArgs['data'] = {
-    customer: {
-      connect: { id: customer.id },
-    },
-    status: 'PREPARACAO',
-    eta: null,
-    trackingNumber: null,
-    publicToken,
-    filesJson: Array.isArray(saved.photoUrls) ? (saved.photoUrls as any) : undefined,
-    items: {
-      create: [
-        {
-          description: 'Detalhes do produto',
-          quantity: 1,
-          model: saved.modelKey,
-          complements: saved.complemento ?? 'nenhum',
-          customizations,
-        },
-      ],
-    },
-  };
+let order: { id: string; publicToken: string };
+try {
+  order = await prisma.order.create({
+    data: withDelivery,
+    select: { id: true, publicToken: true },
+  });
+} catch (e: any) {
+  const msg = String(e?.message ?? '');
+  const looksLikeUnknownArg =
+    e instanceof Prisma.PrismaClientValidationError &&
+    (msg.includes('Unknown arg `deliveryType`') ||
+     msg.includes('Unknown arg `housingType`') ||
+     msg.includes('Unknown arg `floorNumber`') ||
+     msg.includes('Unknown arg `hasElevator`'));
 
-  // Delivery fields were recently added—try with them, fall back if schema doesn’t have them
-  const withDelivery: any = {
-    ...baseOrderData,
-    deliveryType: saved.deliveryType ?? null,
-    housingType:  saved.housingType ?? null,
-    floorNumber:  saved.floorNumber ?? null,
-    hasElevator:  saved.hasElevator ?? null,
-  };
+  if (looksLikeUnknownArg) {
+    order = await prisma.order.create({
+      data: baseOrderData,
+      select: { id: true, publicToken: true },
+    });
+  } else {
+    console.warn('Order creation failed:', e);
+    return NextResponse.json({ error: 'Order creation failed', detail: msg }, { status: 500 });
+  }
+}
+// 10) Link Budget → Order (1–1) using convertedOrderId on Budget
+await prisma.budget.update({
+  where: { id: saved.id },
+  data: { convertedOrderId: order.id },
+});
 
-  let orderId: string | null = null;
-  try {
-    const order = await prisma.order.create({ data: withDelivery, select: { id: true } });
-    orderId = order.id;
-  } catch (e: any) {
-    // If delivery fields aren’t in the schema, retry without them
-    const msg = String(e?.message ?? '');
-    const looksLikeUnknownArg =
-      e instanceof Prisma.PrismaClientValidationError &&
-      (msg.includes('Unknown arg `deliveryType`') ||
-       msg.includes('Unknown arg `housingType`') ||
-       msg.includes('Unknown arg `floorNumber`') ||
-       msg.includes('Unknown arg `hasElevator`'));
+// 11) Email via Resend — with "Confirmo o Orçamento" CTA (AFTER order exists)
+let emailStatus: 'sent' | 'failed' | 'skipped' = 'skipped';
+const resendKey = process.env.RESEND_API_KEY;
+if (resendKey) {
+  const resend = new Resend(resendKey);
+  const base =
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    process.env.NEXTAUTH_URL ||
+    'http://localhost:3000';
 
-    if (looksLikeUnknownArg) {
-      const order = await prisma.order.create({ data: baseOrderData, select: { id: true } });
-      orderId = order.id;
-    } else {
-      console.warn('Order creation failed:', e);
-      // Surface as 500 so the UI knows Order wasn’t created
-      return NextResponse.json({ error: 'Order creation failed', detail: msg }, { status: 500 });
-    }
+  const confirmUrl = `${base}/pedido/${order.publicToken}?confirm=1`;
+  const backofficeUrl = `${base}/admin/orcamentos/${saved.id}`;
+
+  // NOTE: await render(...) to satisfy the "Promise<string>" type
+  const html = await render(
+    BudgetSentEmail({
+      customerName: saved.name ?? 'Cliente',
+      confirmUrl,
+      pdfUrl: blob.url,
+      backofficeUrl,
+    })
+  );
+
+  const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+  const result = await resend.emails.send({
+    from: `GOLDSTAR <${fromAddr}>`,
+    to: saved.email,
+    subject: 'Orçamento GOLDSTAR',
+    html,
+    attachments: [{ filename: 'orcamento.pdf', path: blob.url }],
+  });
+
+  if (result?.error) {
+    console.warn('Resend send error:', result.error);
+    emailStatus = 'failed';
+  } else {
+    emailStatus = 'sent';
   }
 
-  return NextResponse.json({
-    id: saved.id,
-    status: 'converted',
-    pdf: blob.url,
-    email: emailStatus,
-    orderId,
-    customerId: customer.id,
+  // Mark as sent
+  await prisma.budget.update({
+    where: { id: saved.id },
+    data: { sentAt: new Date() },
   });
+} else {
+  console.warn('RESEND_API_KEY missing; skipping email send');
+}
+
+  return NextResponse.json({
+  id: saved.id,
+  status: 'converted',
+  pdf: blob.url,
+  email: emailStatus,
+  orderId: order.id,
+  publicToken: order.publicToken,
+  customerId: customer.id,
+});
 }

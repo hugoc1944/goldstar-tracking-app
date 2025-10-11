@@ -75,6 +75,7 @@ export async function GET(_req: Request, ctx: any) {
         orderBy: { at: 'asc' },
         select: { from: true, to: true, at: true, note: true },
       },
+      
       items: {
         select: {
           description: true,
@@ -82,11 +83,21 @@ export async function GET(_req: Request, ctx: any) {
           model: true,
           complements: true,
           customizations: true,
-          createdAt: true,
         },
         orderBy: { createdAt: 'asc' },
       },
       customer: { select: { name: true } },
+      createdFromBudget: {
+        select: {
+          sentAt: true,
+          confirmedAt: true,
+          quotedPdfUrl: true,  
+          widthMm: true,        
+          heightMm: true,      
+          depthMm: true,        
+          willSendLater: true, 
+        },
+      },
     },
   });
 
@@ -94,69 +105,50 @@ export async function GET(_req: Request, ctx: any) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  // Photos: prefer order.photoUrls (JSONB) else fall back to filesJson URLs (if you store uploads there)
-  // Normalize arrays of strings or objects → string[]
-  const normalize = (xs: any[]): string[] =>
-    xs.map(pickUrl).filter((u): u is string => typeof u === 'string');
-
-  const firstItem = order.items?.[0];
-  const cust = (firstItem?.customizations ?? {}) as any;
-
-  const fromOrder =
-    Array.isArray((order as any).photoUrls) ? normalize((order as any).photoUrls) : [];
-
-  const fromItemArr =
-    Array.isArray(cust.photoUrls) ? normalize(cust.photoUrls) : [];
-
-  const fromItemSingle = pickUrl(cust.photoUrl);
-  const fromItem = fromItemArr.length ? fromItemArr : (fromItemSingle ? [fromItemSingle] : []);
-
-  const fromFilesJson = Array.isArray((order as any).filesJson)
-    ? normalize(((order as any).filesJson as any[]))
-    : [];
-
-  // Prefer explicit order.photoUrls → then item customizations → then filesJson
-  const photoUrls = fromOrder.length ? fromOrder : (fromItem.length ? fromItem : fromFilesJson);
+  const requiresConfirmation = order.confirmedAt == null;
 
   return NextResponse.json({
-    // stable public reference
     ref: order.id,
     status: order.status,
     createdAt: order.createdAt.toISOString(),
     eta: order.eta ? order.eta.toISOString() : null,
     clientName: order.customer?.name ?? null,
-
-    // items for the public page
-    items: order.items.map(it => ({
-      description: it.description,
-      quantity: it.quantity,
-      model: it.model ?? null,
-      complements: mapComplements(it.complements),
-      customizations: cleanCustomizations(it.customizations) ?? null,
-    })),
-
-    // timeline
-    events: order.events.map(e => ({
-      from: e.from,
-      to: e.to,
-      at: e.at.toISOString(),
-      note: e.note,
-    })),
-
-    // -------- NEW blocks for the public page --------
+    requiresConfirmation,
+    pdfUrl: order.createdFromBudget?.quotedPdfUrl ?? null,
+    
     delivery: {
-      deliveryType: (order as any).deliveryType ?? null,
-      housingType:  (order as any).housingType  ?? null,
-      floorNumber:  (order as any).floorNumber  ?? null,
-      hasElevator:  (order as any).hasElevator  ?? null,
+    deliveryType: order.deliveryType ?? null,
+    housingType:  order.housingType ?? null,
+    floorNumber:  order.floorNumber ?? null,
+    hasElevator:  order.hasElevator ?? null,
     },
-    measures: {
-      widthMm:       (order as any).widthMm       ?? null,
-      heightMm:      (order as any).heightMm      ?? null,
-      depthMm:       (order as any).depthMm       ?? null,
-      willSendLater: (order as any).willSendLater ?? null,
-    },
-    photoUrls,
+    measures: order.createdFromBudget
+      ? {
+          widthMm:      order.createdFromBudget.widthMm ?? null,
+          heightMm:     order.createdFromBudget.heightMm ?? null,
+          depthMm:      order.createdFromBudget.depthMm ?? null,
+          willSendLater: order.createdFromBudget.willSendLater ?? null,
+        }
+      : null,
+
+    items: requiresConfirmation
+      ? []
+      : order.items.map((it) => ({
+          description: it.description,
+          quantity: it.quantity,
+          model: it.model ?? null,
+          complements: it.complements ?? null,
+          customizations:
+            (it.customizations as Record<string, string | null> | null) ?? null,
+        })),
+    events: requiresConfirmation
+      ? []
+      : order.events.map((e) => ({
+          from: e.from,
+          to: e.to,
+          at: e.at.toISOString(),
+          note: e.note,
+        })),
   });
 }
 

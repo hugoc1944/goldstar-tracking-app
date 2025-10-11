@@ -430,8 +430,8 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Medidas</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <NumInput f={form} name="widthMm"  label="Largura (cm)" />
-            <NumInput f={form} name="heightMm" label="Altura (cm)" />
+            <NumInput f={form} name="widthMm"  label="Largura (cm)*" />
+            <NumInput f={form} name="heightMm" label="Altura (cm)*" />
             <NumInput f={form} name="depthMm"  label="Profundidade (cm)" />
         </div>
       </section>

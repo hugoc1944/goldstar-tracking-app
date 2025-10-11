@@ -15,7 +15,13 @@ export async function GET(req: Request) {
   }
 
   const clients = await prisma.customer.findMany({
-    where,
+    where: {
+      orders: {
+        some: {
+          confirmedAt: { not: null }, // ✅ only clients with at least one confirmed order
+        },
+      },
+    },
     take: take + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     orderBy: { createdAt: 'desc' },
@@ -23,7 +29,12 @@ export async function GET(req: Request) {
       id: true,
       name: true,
       email: true,
-      _count: { select: { orders: true } },
+      _count: {
+        select: {
+          //count only confirmed orders
+          orders: { where: { confirmedAt: { not: null } } },
+        },
+      },
     },
   });
 
