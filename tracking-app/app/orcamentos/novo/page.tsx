@@ -39,7 +39,6 @@ function canon(input: string) {
     .replace(/_+/g, '_')                  // collapse multiple underscores
     .trim();
 }
-
 // Find catalog option by value OR label (case/diacritics/sep-insensitive)
 function matchOption(
   options: { value: string; label: string }[] | undefined,
@@ -53,6 +52,361 @@ function matchOption(
   // then by label
   found = options.find(o => canon(o.label) === r);
   return found?.value;
+}
+
+// ==== ICON PATH HELPERS (seguem a lógica do simulador) ====
+
+// normaliza "sterling_v1" -> "Sterling_V1" (mesma ideia do simModelParam)
+function modelKeyToVariantStem(key: string) {
+  const parts = key.replace(/-/g, '_').split('_').filter(Boolean);
+  const tail = parts[parts.length - 1] ?? '';
+  const v = tail.match(/^v(\w+)$/i)?.[1];
+  const baseParts = v ? parts.slice(0, -1) : parts;
+  const basePascal = baseParts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join('');
+  return v ? `${basePascal}_V${v}` : basePascal;
+}
+// Converte "diplomata pivotante v1", "diplomata_pivotante_v1",
+// "DiplomataPivotante_v1" → "DiplomataPivotante_V1"
+function modelStemFromAny(input: string) {
+  // normaliza separadores: espaços/hífens -> "_"
+  const s = input.replace(/-/g, '_').replace(/\s+/g, '_').trim();
+
+  // detecta versão vN no final (com ou sem "_")
+  const m = s.match(/^(.*?)(?:_)?v(\d+)$/i);
+  let base = m ? m[1] : s;
+  const v = m ? m[2] : undefined;
+
+  // se tiver "_" fazemos PascalCase por tokens; caso contrário, preservamos CamelCase existente
+  if (base.includes('_')) {
+    base = base
+      .split('_')
+      .filter(Boolean)
+      .map(tok => tok ? tok[0].toUpperCase() + tok.slice(1).toLowerCase() : tok)
+      .join('');
+  } else {
+    // já pode vir em CamelCase; garantimos 1ª letra maiúscula
+    base = base ? base[0].toUpperCase() + base.slice(1) : base;
+  }
+
+  return v ? `${base}_V${v}` : base;
+}
+
+const PRE = '/previews';
+
+// — modelos (agora robusto a label/value com espaços/hífens/CamelCase)
+const modelIconSrc = (valueOrLabel: string) => `${PRE}/models/${modelStemFromAny(valueOrLabel)}.png`;
+// remove acentos e espaços para bater certo em nomes tipo "AguaViva", "PolicarbonatoTransparente"
+function labelToStem(label: string) {
+  return label
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s_-]+/g, ''); // também remove "_" e "-" agora
+}
+// Junta tokens em PascalCase (remove espaços/_/hífens)
+function toPascalNoSep(input: string) {
+  return input
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .split(/[\s_-]+/).filter(Boolean)
+    .map(t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase())
+    .join('');
+}
+
+// — acabamentos
+const finishIconSrc = (name: string) => `${PRE}/finishes/${toPascalNoSep(name)}.png`;
+
+// — puxadores (catálogo usa p.ex. h1..h7/sem); simulador usa Handle_1..8 e none/default
+function handleIconSrc(value?: string) {
+  if (!value || value === '' ) return `${PRE}/handles/default.png`;
+  if (/^h(\d)$/i.test(value)) return `${PRE}/handles/Handle_${value.replace(/^h/i,'')}.png`;
+  if (value.toLowerCase() === 'sem') return `${PRE}/handles/none.png`;
+  return `${PRE}/handles/default.png`;
+}
+
+// — vidros/monos (ficheiros tipo Transparente.png, Fosco.png, Gris.png, ...)
+const glassIconSrcFromLabel = (label: string) => `${PRE}/glass/vidros/${labelToStem(label)}.png`;
+
+// — acrílicos (ficheiros tipo AguaViva.png, PolicarbonatoTransparente.png, ...)
+const acrylicIconSrcFromLabel = (label: string) => `${PRE}/acrylics/${labelToStem(label)}.png`;
+
+// — serigrafias (ficheiros tipo SER001.png, Quadro1.png, Elo2.png, ...)
+const silkIconSrc = (id: string) => `${PRE}/glass/silks/${id}.png`;
+
+
+function fixBarIconSrc(mode: 'padrao'|'acabamento', currentFinish?: string) {
+  // "Padrão" -> mostrar Anodizado
+  if (mode === 'padrao') return finishIconSrc('anodizado');
+  // "Cor do Acabamento" -> mostrar exatamente o mesmo preview do campo "Acabamento"
+  if (mode === 'acabamento' && currentFinish) return finishIconSrc(currentFinish);
+  // fallback (sem ícone se ainda não há acabamento escolhido)
+  return '';
+}
+function serigrafiaColorIconSrc(mode: 'padrao'|'acabamento', currentFinish?: string) {
+  // "Padrão" -> Fosco do diretório de vidros
+  if (mode === 'padrao') return `${PRE}/glass/vidros/Fosco.png`;
+  // "Cor do acabamento" -> mesmo preview do campo "Acabamento"
+  if (mode === 'acabamento' && currentFinish) return finishIconSrc(currentFinish);
+  return '';
+}
+function towelColorIconSrc(mode: 'padrao'|'acabamento', currentFinish?: string) {
+  // "Padrão" -> usar o preview de "Cromado" dos acabamentos
+  if (mode === 'padrao') return finishIconSrc('Cromado');
+  // "Cor do acabamento" -> mesmo preview do campo "Acabamento"
+  if (mode === 'acabamento' && currentFinish) return finishIconSrc(currentFinish);
+  return '';
+}
+// --- classificação & ordenação de Serigrafias ---
+function startsWithToken(s: string, token: string) {
+  return s.replace(/^[\s_-]+|[\s_-]+$/g,'').toLowerCase().startsWith(token.toLowerCase());
+}
+function silkKind(opt: { value: string; label: string }) {
+  const v = (opt.value ?? '').trim();
+  const l = (opt.label ?? '').trim();
+  const vs = v.replace(/[\s_-]+/g,'');
+  const ls = l.replace(/[\s_-]+/g,'');
+  if (startsWithToken(vs, 'sereno') || startsWithToken(ls, 'sereno')) return 'sereno';
+  if (startsWithToken(vs, 'ser')     || startsWithToken(ls, 'ser'))     return 'ser';     // Prime
+  if (startsWithToken(vs, 'quadro')  || startsWithToken(ls, 'quadro'))  return 'quadro';
+  if (startsWithToken(vs, 'elo')     || startsWithToken(ls, 'elo'))     return 'elo';
+  return 'ser'; // fallback mais comum
+}
+
+// extrai número depois do prefixo (SER001, Quadro 3, Elo_12...)
+function extractNum(opt: { value: string; label: string }) {
+  const s = `${opt.value ?? ''} ${opt.label ?? ''}`;
+  const m =
+    s.match(/ser[\s_-]*0*(\d+)/i) ||
+    s.match(/quadro[\s_-]*0*(\d+)/i) ||
+    s.match(/elo[\s_-]*0*(\d+)/i);
+  return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+}
+
+// label normalizado (mostra "SERENO" como "Sereno")
+function normalizedSilkLabel(opt: CatItem) {
+  const raw = opt.label?.trim() || opt.value?.trim() || '';
+  if (/^sereno\b/i.test(raw)) return 'Sereno';
+  return raw;
+}
+
+// ordenação: por "order" quando existir; senão por número extraído; fallback por label
+function silkSort(a: CatItem, b: CatItem) {
+  if (a.order != null && b.order != null && a.order !== b.order) return a.order - b.order;
+  const na = extractNum(a), nb = extractNum(b);
+  if (na !== nb) return na - nb;
+  return normalizedSilkLabel(a).localeCompare(normalizedSilkLabel(b), 'pt');
+}
+
+// — complemento (ícones opcionais)
+function complementoIconSrc(value: string) {
+  const v = value.toLowerCase();
+  if (v === 'vision') return `${PRE}/toalheiros/Vision.png`;
+  if (v === 'toalheiro1') return `${PRE}/toalheiros/Toalheiro1.png`;
+  if (v === 'prateleira') return `${PRE}/shelf/Prateleira.png`;
+  // 'nenhum' → sem ícone
+  return '';
+}
+function silkIdFrom(value?: string, label?: string) {
+  const s = (value || label || '').trim();
+
+  // Tenta SER + número (com/sem zeros)
+  const mSer = s.match(/ser[\s_-]*0*(\d+)/i);
+  if (mSer) {
+    return `SER${mSer[1].padStart(3, '0')}`;  // SER002
+  }
+
+  // Tenta padrões "Quadro 1", "Elo 2", "Sereno 3" → Quadro1/Elo2/Sereno3
+  const mNamed = s.match(/(Quadro|Elo|Sereno)\s*0*(\d+)/i);
+  if (mNamed) {
+    const name = mNamed[1][0].toUpperCase() + mNamed[1].slice(1).toLowerCase();
+    return `${name}${mNamed[2]}`;
+  }
+
+  // Fallback: remove separadores e usa Pascal (para nomes raros)
+  return toPascalNoSep(s);
+}
+
+function silkIconFromOpt(opt: { value: string; label: string }) {
+  const id = silkIdFrom(opt.value, opt.label);
+  return `${PRE}/glass/silks/${id}.png`;
+}
+
+// — Vision > cor da barra (catálogo costuma ter 'glass' | 'white' | 'black')
+function visionBarIconSrc(value: string) {
+  const v = value.toLowerCase();
+  if (v === 'glass') return `${PRE}/glass/vidros/Transparente.png`;
+  if (v === 'white' || v === 'branco') return `${PRE}/finishes/BrancoMate.png`;
+  if (v === 'black' || v === 'preto') return `${PRE}/finishes/PretoMate.png`;
+  // aceita "branco_mate", "Branco Mate", etc.
+  return `${PRE}/finishes/${toPascalNoSep(value)}.png`;
+}
+function TinyIcon({ src, alt, size = 20 }: { src?: string; alt: string; size?: number }) {
+  const [useJpg, setUseJpg] = React.useState(false);
+  if (!src) return <span className="inline-block rounded-[6px] bg-neutral-200/70" style={{ width: size, height: size }} aria-hidden />;
+  const base = src.replace(/\.(png|jpg)$/i, '');
+  const url = `${base}.${useJpg ? 'jpg' : 'png'}`;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={alt}
+      style={{ width: size, height: size }}
+      className="object-contain rounded-[6px] bg-white"
+      onError={() => setUseJpg(true)}
+    />
+  );
+}
+type IconOption = { value: string; label: string; order?: number };
+
+function useClickOutside<T extends HTMLElement>(onOutside: () => void) {
+  const ref = React.useRef<T | null>(null);
+  React.useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) onOutside();
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [onOutside]);
+  return ref;
+}
+
+function IconSelect({
+  value,
+  onChange,
+  options,
+  groups,
+  getIcon,
+  placeholder = '—',
+  disabled,
+  iconSize = 20,
+  itemIconSize = 20,
+}:{
+  value?: string;
+  onChange: (v: string) => void;
+  options?: IconOption[];
+  groups?: Map<string, IconOption[]>;
+  getIcon: (opt: IconOption) => string | undefined;
+  placeholder?: string;
+  disabled?: boolean;
+  iconSize?: number;
+  itemIconSize?: number;
+}) {
+  const [mounted, setMounted] = React.useState(false); // controla montagem
+  const [animIn, setAnimIn] = React.useState(false);    // estado da transição
+  const ref = useClickOutside<HTMLDivElement>(() => closeMenu());
+
+  function openMenu() {
+    if (mounted) return;
+    setMounted(true);
+    requestAnimationFrame(() => setAnimIn(true)); // trigger enter transition
+  }
+  function closeMenu() {
+    if (!mounted) return;
+    setAnimIn(false); // start leave
+  }
+
+  // desmonta no fim da animação de saída
+  const onMenuTransitionEnd = React.useCallback(() => {
+    if (!animIn) setMounted(false);
+  }, [animIn]);
+
+  // ESC fecha
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') closeMenu(); }
+    if (mounted) document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mounted]);
+
+  const flat: IconOption[] = React.useMemo(() => {
+    if (groups) return Array.from(groups.values()).flat();
+    return options ?? [];
+  }, [groups, options]);
+
+  const current = flat.find(o => o.value === value);
+
+  // selecionar item (usar onMouseDown evita "re-click" no trigger)
+  const selectItem = (val: string) => {
+    onChange(val);
+    closeMenu();
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => (mounted ? closeMenu() : openMenu())}
+        className="w-full rounded border bg-white px-3 py-2 flex items-center justify-between gap-2"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <TinyIcon src={current ? getIcon(current) : undefined} alt={current?.label ?? ''} size={iconSize} />
+          <span className="truncate">{current?.label ?? placeholder}</span>
+        </span>
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+          <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.24 4.25a.75.75 0 01-1.08 0L5.25 8.27a.75.75 0 01-.02-1.06z"/>
+        </svg>
+      </button>
+
+      {mounted && (
+        <div
+          className={[
+            "absolute z-20 mt-1 w-full rounded-xl border bg-white shadow-[0_8px_24px_rgba(0,0,0,.12)]",
+            "origin-top transition-all duration-150 ease-out",
+            animIn ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-1 scale-[0.98]"
+          ].join(' ')}
+          onTransitionEnd={onMenuTransitionEnd}
+          role="listbox"
+        >
+          <div className="max-h-72 overflow-auto py-1">
+            {groups ? (
+              Array.from(groups.entries()).map(([g, arr]) => (
+                <div key={g} className="py-1">
+                  <div className="sticky top-0 z-10 bg-white/95 backdrop-blur px-3 py-1 text-[11px] uppercase text-neutral-500">{g}</div>
+                  {arr.map(opt => {
+                    const selected = opt.value === value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onMouseDown={() => selectItem(opt.value)}
+                        className={[
+                          "w-full px-3 py-2.5 flex items-center gap-3 text-left hover:bg-neutral-50",
+                          selected ? "bg-neutral-50" : ""
+                        ].join(' ')}
+                        role="option"
+                        aria-selected={selected}
+                      >
+                        <TinyIcon src={getIcon(opt)} alt={opt.label} size={itemIconSize} />
+                        <span className="truncate">{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))
+            ) : (
+              (options ?? []).map(opt => {
+                const selected = opt.value === value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onMouseDown={() => selectItem(opt.value)}
+                    className={[
+                      "w-full px-3 py-2.5 flex items-center gap-3 text-left hover:bg-neutral-50",
+                      selected ? "bg-neutral-50" : ""
+                    ].join(' ')}
+                    role="option"
+                    aria-selected={selected}
+                  >
+                    <TinyIcon src={getIcon(opt)} alt={opt.label} size={itemIconSize} />
+                    <span className="truncate">{opt.label}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Parse bool/numbers from search params (accepts 1/true/yes)
@@ -191,7 +545,7 @@ type RHFResolver = Resolver<FormValues, any, FormValues>;
       cornerChoice: undefined, cornerColorMode: undefined,
       widthMm: undefined, heightMm: undefined, depthMm: undefined,
       willSendLater: search.get('later') === '1',
-      deliveryType: 'entrega',
+      deliveryType: '',
       housingType: undefined, floorNumber: undefined, hasElevator: undefined,
       photoUrls: [],
       notes: undefined,
@@ -372,15 +726,34 @@ React.useEffect(() => {
   const glassTipos = React.useMemo(() => catalog?.['GLASS_TIPO'] ?? [], [catalog]);
   const monos = React.useMemo(() => catalog?.['MONOCROMATICO'] ?? [], [catalog]);
   const complemento = React.useMemo(() => catalog?.['COMPLEMENTO'] ?? [], [catalog]);
+  const showToalheiro1 = React.useMemo(() => isStrongOrPainelModel(modelKey), [modelKey]);
+
+const complementoFiltered = React.useMemo(() => {
+  const base = (catalog?.['COMPLEMENTO'] ?? []) as CatItem[];
+  return showToalheiro1 ? base : base.filter(o => o.value !== 'toalheiro1');
+}, [catalog, showToalheiro1]);
   const barColors = React.useMemo(() => catalog?.['VISION_BAR_COLOR'] ?? [], [catalog]);
   const serPrime = React.useMemo(() => catalog?.['SERIGRAFIA_PRIME'] ?? [], [catalog]);
   const serQuadros = React.useMemo(() => catalog?.['SERIGRAFIA_QUADROS'] ?? [], [catalog]);
   const serElo = React.useMemo(() => catalog?.['SERIGRAFIA_ELO_SERENO'] ?? [], [catalog]);
 
-  const serigrafias: CatItem[] = React.useMemo(
-    () => uniqByValue([...(serPrime ?? []), ...(serQuadros ?? []), ...(serElo ?? [])]),
-    [serPrime, serQuadros, serElo]
-  );
+ const serigrafias: CatItem[] = React.useMemo(() => {
+  const all = uniqByValue([...(serPrime ?? []), ...(serQuadros ?? []), ...(serElo ?? [])]);
+
+  // normaliza label "SERENO" -> "Sereno"
+  const withNiceLabels = all.map(o => ({ ...o, label: normalizedSilkLabel(o) }));
+
+  const buckets = { ser: [] as CatItem[], quadro: [] as CatItem[], elo: [] as CatItem[], sereno: [] as CatItem[] };
+  for (const o of withNiceLabels) buckets[silkKind(o) as keyof typeof buckets].push(o);
+
+  buckets.ser.sort(silkSort);
+  buckets.quadro.sort(silkSort);
+  buckets.elo.sort(silkSort);
+  buckets.sereno.sort(silkSort);
+
+  // ordem final requisitada: SER (Prime) → Quadro → Elo → Sereno
+  return [...buckets.ser, ...buckets.quadro, ...buckets.elo, ...buckets.sereno];
+}, [serPrime, serQuadros, serElo]);
 
   const allGlassOptions = React.useMemo(
     () => [ ...(glassTipos ?? []), ...(monos ?? []) ],
@@ -493,6 +866,13 @@ React.useEffect(() => {
       form.setValue('shelfColorMode', undefined, { shouldDirty:true });
     }
   }, [comp]);
+  // If model is not Strong/Painel, force-remove "toalheiro1"
+React.useEffect(() => {
+  if (!showToalheiro1 && form.getValues('complemento') === 'toalheiro1') {
+    form.setValue('complemento', 'nenhum', { shouldDirty: true });
+    form.setValue('towelColorMode', undefined, { shouldDirty: true });
+  }
+}, [showToalheiro1]);
 
     const selSer = form.watch('serigrafiaKey');
     React.useEffect(() => {
@@ -561,7 +941,11 @@ function isAbrirModel(key?: string) {
     /painel[_-]?v(2|3|4)/.test(k)
   );
 }
-
+function isStrongOrPainelModel(key?: string) {
+  if (!key) return false;
+  const k = key.toLowerCase();
+  return k.includes('strong') || k.includes('painel');
+}
 /** Hard map models to their section. Extend keys as needed. */
 function classifyModelGroupByKey(key: string, label: string) {
   const k = key.toLowerCase();
@@ -635,7 +1019,28 @@ const simModelParam = React.useMemo(() => {
   // If we had a version, append _Vn
   return vMatch ? `${basePascal}_V${vMatch[1]}` : basePascal;
 }, [modelKey]);
-
+  const selectedFinish = form.watch('finishKey');
+  const fixingBarOptions = React.useMemo(
+    () => [
+      { value: 'padrao',     label: 'Padrão' },
+      { value: 'acabamento', label: 'Cor do acabamento' },
+    ],
+    []
+  );
+  const serigrafiaColorOptions = React.useMemo(
+  () => [
+    { value: 'padrao',     label: 'Padrão' },
+    { value: 'acabamento', label: 'Cor do acabamento' },
+  ],
+  []
+);
+const towelColorOptions = React.useMemo(
+  () => [
+    { value: 'padrao',     label: 'Padrão' },
+    { value: 'acabamento', label: 'Cor do acabamento' },
+  ],
+  []
+);
 const fileInputRef = React.useRef<HTMLInputElement>(null);
 
 React.useEffect(() => {
@@ -724,107 +1129,188 @@ React.useEffect(() => {
 
             <div className="space-y-3">
               {/* Modelo */}
-              <FieldWrap label="Modelo *" error={form.formState.errors?.['modelKey']?.message as string | undefined}>
+             <FieldWrap label="Modelo *" error={form.formState.errors?.['modelKey']?.message as string | undefined}>
+              <Controller
+                name="modelKey"
+                control={form.control}
+                render={({ field }) => (
+                  <IconSelect
+                    value={field.value}
+                    onChange={field.onChange}
+                    groups={groupedModels as unknown as Map<string, {value:string;label:string}[]>}
+                    getIcon={(opt) => modelIconSrc(opt.value || opt.label)}
+                    iconSize={48}       // ícone grande no botão fechado
+                    itemIconSize={64}   // ícone maior dentro da lista
+                  />
+                )}
+              />
+            </FieldWrap>
+
+              {!hideHandles && (
+              <FieldWrap label="Puxador" error={form.formState.errors?.['handleKey']?.message as string | undefined}>
                 <Controller
-                  name="modelKey"
+                  name="handleKey"
                   control={form.control}
                   render={({ field }) => (
-                    <select {...field} className="w-full border rounded px-3 py-2 bg-white">
-                      {[...groupedModels.entries()].map(([group, items]) => (
-                        <optgroup key={group} label={group}>
-                          {items.map((m, i) => (
-                            <option key={`${m.value}-${i}`} value={m.value}>{m.label}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
+                    <IconSelect
+                      value={field.value}
+                      onChange={(v) => field.onChange(v || undefined)}
+                      options={handles}
+                      getIcon={(opt) => handleIconSrc(opt.value)}
+                      iconSize={36}
+                      itemIconSize={48}
+                    />
                   )}
                 />
               </FieldWrap>
+            )}
 
-              {!hideHandles && (
-                <Select f={form} name="handleKey" label="Puxador" options={handles} />
-              )}
-
-              <Select f={form} name="finishKey" label="Acabamento *" options={finishes} />
-
-              {rule?.hasFixingBar && (
-                <Select
-                  f={form}
-                  name="fixingBarMode"
-                  label="Barra de fixação *"
-                  options={[
-                    { value: 'padrao',     label: 'Padrão' },
-                    { value: 'acabamento', label: 'Cor do acabamento' },
-                  ]}
+              <FieldWrap label="Acabamento *" error={form.formState.errors?.['finishKey']?.message as string | undefined}>
+                <Controller
+                  name="finishKey"
+                  control={form.control}
+                  render={({ field }) => (
+                    <IconSelect
+                      value={field.value}
+                      onChange={field.onChange}
+                      options={finishes}
+                      getIcon={(opt) => finishIconSrc(opt.value)}
+                      iconSize={36}
+                      itemIconSize={48}
+                    />
+                  )}
                 />
-              )}
+              </FieldWrap>
+             {rule?.hasFixingBar && (
+              <FieldWrap label="Barra de fixação *" error={form.formState.errors?.['fixingBarMode']?.message as string | undefined}>
+                <Controller
+                  name="fixingBarMode"
+                  control={form.control}
+                  render={({ field }) => (
+                    <IconSelect
+                      value={(field.value ?? '') as string}
+                      onChange={(v) => field.onChange(v || undefined)}
+                      options={fixingBarOptions}
+                      // Padrão -> Anodizado | Acabamento -> preview do "Acabamento" atual
+                      getIcon={(opt) => fixBarIconSrc(opt.value as 'padrao'|'acabamento', selectedFinish)}
+                      iconSize={36}
+                      itemIconSize={48}
+                      placeholder="—"
+                    />
+                  )}
+                />
+              </FieldWrap>
+            )}
 
-              <FieldWrap
-                label="Vidro / Monocromático *"
-                error={form.formState.errors?.['glassTypeKey']?.message as string | undefined}
-              >
+              <FieldWrap label="Vidro / Monocromático *" error={form.formState.errors?.['glassTypeKey']?.message as string | undefined}>
                 <Controller
                   name="glassTypeKey"
                   control={form.control}
                   render={({ field }) => (
-                    <select
-                      {...field}
-                      onChange={(e) => handleGlassChange(e.target.value)}
-                      value={(field.value ?? '') as string}
-                      className="w-full border rounded px-3 py-2 bg-white"
-                    >
-                      {[...(glassTipos ?? []), ...(monos ?? [])].map((o, i) => (
-                        <option key={`${o.value}-${i}`} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
+                    <IconSelect
+                      value={field.value}
+                      onChange={(v) => handleGlassChange(v)}
+                      options={[...(glassTipos ?? []), ...(monos ?? [])]}
+                      getIcon={(opt) => glassIconSrcFromLabel(opt.label)}
+                      iconSize={36}
+                      itemIconSize={48}
+                    />
                   )}
                 />
               </FieldWrap>
 
               {allowAcrylic && (
-                <FieldWrap
-                  label="Acrílico / Policarbonato"
-                  error={form.formState.errors?.['acrylicKey']?.message as string | undefined}
-                >
+                <FieldWrap label="Acrílico / Policarbonato" error={form.formState.errors?.['acrylicKey']?.message as string | undefined}>
                   <Controller
                     name="acrylicKey"
                     control={form.control}
                     render={({ field }) => (
-                      <select
-                        {...field}
-                        onChange={(e) => handleAcrylicChange(e.target.value || undefined)}
+                      <IconSelect
                         value={(field.value ?? '') as string}
-                        className="w-full border rounded px-3 py-2 bg-white"
-                      >
-                        {(catalog?.ACRYLIC_AND_POLICARBONATE ?? []).map((o, i) => (
-                          <option key={`${o.value}-${i}`} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
+                        onChange={(v) => handleAcrylicChange(v || undefined)}
+                        options={(catalog?.ACRYLIC_AND_POLICARBONATE ?? [])}
+                        getIcon={(opt) => opt.value === 'nenhum' ? '' : acrylicIconSrcFromLabel(opt.label)}
+                        iconSize={36}
+                        itemIconSize={48}
+                      />
                     )}
                   />
                 </FieldWrap>
               )}
 
-              <Select f={form} name="complemento" label="Complemento *" options={complemento} />
+              <FieldWrap label="Complemento *" error={form.formState.errors?.['complemento']?.message as string | undefined}>
+                <Controller
+                  name="complemento"
+                  control={form.control}
+                  render={({ field }) => (
+                    <IconSelect
+                      value={field.value}
+                      onChange={field.onChange}
+                      options={complementoFiltered}   // ← was `complemento`
+                      getIcon={(opt) => complementoIconSrc(opt.value)}
+                      iconSize={36}
+                      itemIconSize={48}
+                    />
+                  )}
+                />
+              </FieldWrap>
 
               {comp === 'vision' && (
                 <>
-                  <Select f={form} name="barColor"      label="Cor da Barra Vision *" options={barColors} />
-                  <Select f={form} name="visionSupport" label="Cor de Suporte *"      options={finishes} />
+                  < FieldWrap label="Cor da Barra Vision *" >
+                    <Controller
+                      name="barColor"
+                      control={form.control}
+                      render={({ field }) => (
+                        <IconSelect
+                          value={field.value}
+                          onChange={field.onChange}
+                          options={barColors}
+                          getIcon={(opt) => visionBarIconSrc(opt.value)}
+                          iconSize={36}
+                          itemIconSize={48}
+                        />
+                      )}
+                    />
+                  </FieldWrap>
+                  <FieldWrap label="Cor de Suporte *">
+                    <Controller
+                      name="visionSupport"
+                      control={form.control}
+                      render={({ field }) => (
+                        <IconSelect
+                          value={field.value}
+                          onChange={field.onChange}
+                          options={finishes}
+                          getIcon={(opt) => finishIconSrc(opt.value)}
+                          iconSize={36}
+                          itemIconSize={48}
+                        />
+                      )}
+                    />
+                  </FieldWrap>
                 </>
               )}
 
               {comp === 'toalheiro1' && (
-                <Select
-                  f={form}
-                  name="towelColorMode"
-                  label="Cor do toalheiro *"
-                  options={[
-                    { value: 'padrao',     label: 'Padrão (Cromado)' },
-                    { value: 'acabamento', label: 'Cor do Acabamento' },
-                  ]}
-                />
+                <FieldWrap label="Cor do toalheiro *" error={form.formState.errors?.['towelColorMode']?.message as string | undefined}>
+                  <Controller
+                    name="towelColorMode"
+                    control={form.control}
+                    render={({ field }) => (
+                      <IconSelect
+                        value={(field.value ?? '') as string}
+                        onChange={(v) => field.onChange(v || undefined)}
+                        options={towelColorOptions}
+                        // Padrão -> Cromado | Acabamento -> preview do "Acabamento" atual
+                        getIcon={(opt) => towelColorIconSrc(opt.value as 'padrao'|'acabamento', selectedFinish)}
+                        iconSize={36}
+                        itemIconSize={48}
+                        placeholder="—"
+                      />
+                    )}
+                  />
+                </FieldWrap>
               )}
 
               {comp === 'prateleira' && (
@@ -839,38 +1325,42 @@ React.useEffect(() => {
                 />
               )}
 
-              <FieldWrap
-                label="Serigrafia"
-                error={form.formState.errors?.['serigrafiaKey']?.message as string | undefined}
-              >
+              <FieldWrap label="Serigrafia" error={form.formState.errors?.['serigrafiaKey']?.message as string | undefined}>
                 <Controller
                   name="serigrafiaKey"
                   control={form.control}
                   render={({ field }) => (
-                    <select
-                      {...field}
-                      onChange={(e) => handleSerigrafiaChange(e.target.value || undefined)}
+                    <IconSelect
                       value={(field.value ?? '') as string}
-                      className="w-full border rounded px-3 py-2 bg-white"
-                    >
-                      {serigrafias.map((o, i) => (
-                        <option key={`${o.value}-${i}`} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => handleSerigrafiaChange(v || undefined)}
+                      options={serigrafias}
+                      getIcon={(opt) => opt.value === 'nenhum' ? '' : silkIconFromOpt(opt)}
+                      iconSize={36}
+                      itemIconSize={48}
+                    />
                   )}
                 />
               </FieldWrap>
-              {selSer && selSer !== 'nenhum' && (
-                <Select
-                  f={form}
+             {selSer && selSer !== 'nenhum' && (
+              <FieldWrap label="Cor da Serigrafia *" error={form.formState.errors?.['serigrafiaColor']?.message as string | undefined}>
+                <Controller
                   name="serigrafiaColor"
-                  label="Cor da Serigrafia*"
-                  options={[
-                    { value: 'padrao',     label: 'Padrão' },
-                    { value: 'acabamento', label: 'Cor do Acabamento' },
-                  ]}
+                  control={form.control}
+                  render={({ field }) => (
+                    <IconSelect
+                      value={(field.value ?? '') as string}
+                      onChange={(v) => field.onChange(v || undefined)}
+                      options={serigrafiaColorOptions}
+                      // Padrão -> Fosco | Acabamento -> preview do "Acabamento" atual
+                      getIcon={(opt) => serigrafiaColorIconSrc(opt.value as 'padrao'|'acabamento', selectedFinish)}
+                      iconSize={36}
+                      itemIconSize={48}
+                      placeholder="—"
+                    />
+                  )}
                 />
-              )}
+              </FieldWrap>
+            )}
             </div>
           </section>
         </div>
@@ -897,8 +1387,10 @@ React.useEffect(() => {
             f={form}
             name="deliveryType"
             label="Tipo de Entrega *"
+            allowEmpty
+            emptyLabel="Selecionar"
             options={[
-              { value: 'entrega', label: 'Entrega' },
+              { value: 'entrega',    label: 'Entrega' },
               { value: 'instalacao', label: 'Entrega + Instalação (custo adicional)' },
             ]}
           />
@@ -1019,10 +1511,11 @@ function Checkbox({ f, name, label }:{ f:any; name:string; label?:string }) {
   );
 }
 
+// add a new prop `emptyLabel` and use it
 function Select({
-  f, name, label, options, allowEmpty,
+  f, name, label, options, allowEmpty, emptyLabel = 'Selecionar',
 }:{
-  f:any; name:keyof FormValues & string; label?:string; options: CatItem[]; allowEmpty?: boolean;
+  f:any; name:keyof FormValues & string; label?:string; options: CatItem[]; allowEmpty?: boolean; emptyLabel?: string;
 }) {
   const { control, formState:{ errors } } = f;
   return (
@@ -1033,12 +1526,11 @@ function Select({
         render={({ field }) => (
           <select
             {...field}
-            // normalize '' → undefined for optional schemas
             onChange={(e) => field.onChange(e.target.value === '' ? undefined : e.target.value)}
             value={(field.value ?? '') as string}
             className="w-full border rounded px-3 py-2"
           >
-            {allowEmpty && <option value="">—</option>}
+            {allowEmpty && <option value="">{emptyLabel}</option>}
             {options?.map((o, i) => (
               <option key={`${o.value}-${i}`} value={o.value}>{o.label}</option>
             ))}
