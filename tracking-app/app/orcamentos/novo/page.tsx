@@ -413,7 +413,6 @@ function IconSelect({
 const asBool = (s?: string | null) =>
   s == null ? undefined : ['1','true','yes','y'].includes(s.toLowerCase());
 const asInt  = (s?: string | null) => (s == null || s === '' ? undefined : Number(s));
-const SerColorEnum = z.enum(['padrao','acabamento']);
 const FixBarModeEnum = z.enum(['padrao','acabamento']); 
 const DualColorModeEnum = z.enum(['padrao','acabamento']);
 const NumOpt = z.preprocess(
@@ -448,7 +447,7 @@ export const PublicBudgetSchema = z.object({
   glassTypeKey: z.string().min(1),
   acrylicKey: z.string().optional(),
   serigrafiaKey: z.string().optional(),
-  serigrafiaColor: SerColorEnum.optional(),
+serigrafiaColor: z.string().optional(),
   fixingBarMode: FixBarModeEnum.optional(),
 
   complemento: z.string().min(1),
@@ -515,9 +514,42 @@ export const PublicBudgetSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório para Prateleira de Canto.', path: ['shelfColorMode'] });
     }
   }
+
+  // Serigrafia → color is required and cannot be Anodizado/Cromado
+if (val.serigrafiaKey && val.serigrafiaKey !== 'nenhum') {
+  const c = (val.serigrafiaColor ?? '').trim().toLowerCase();
+  if (!c) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Escolha a cor da serigrafia.', path: ['serigrafiaColor'] });
+  } else if (c === 'anodizado' || c === 'cromado') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Cor indisponível para serigrafia.', path: ['serigrafiaColor'] });
+  }
+}
 });
 
 type FormValues = z.infer<typeof PublicBudgetSchema>;
+
+const HIDE_DEPTH_MODELS = new Set(
+  [
+    'sterling_v1',
+    'sterling_v2',
+    'diplomatagold_v1',
+    'diplomatagold_v2',
+    'diplomatagold_v3',
+    'diplomatagold_v4',
+    'diplomatagold_v5',
+    'diplomatagold_v6',
+    'diplomatapivotante_v1',
+    'europa_v1',
+    'europa_v2',
+    'lasvegas_v1',
+    'fole_4portas',
+  ].map(s => s.toLowerCase())
+);
+function hideDepthForModel(key?: string) {
+  if (!key) return false;
+  const k = key.toLowerCase().replace(/-/g, '_'); // normalize
+  return HIDE_DEPTH_MODELS.has(k);
+}
 
 export function BudgetFormPageInner() {
   const search = useSearchParams();
@@ -553,7 +585,7 @@ type RHFResolver = Resolver<FormValues, any, FormValues>;
   });
 
   const modelKey = form.watch('modelKey');
-
+  const hideDepth = React.useMemo(() => hideDepthForModel(modelKey), [modelKey]);
   // Load catalog once
   React.useEffect(() => {
     (async () => {
@@ -661,7 +693,16 @@ React.useEffect(() => {
     if (serCor === 'padrao' || serCor === 'acabamento') {
       form.setValue('serigrafiaColor', serCor, { shouldDirty: false });
     }
-
+    const serColorParam = search.get('serColor') ?? search.get('serigrafiaColor');
+    if (serColorParam) {
+      // same filtering: exclude Anodizado/Cromado
+      const finForSer = finishesByRule.filter(f => {
+        const v = f.value.toLowerCase();
+        return v !== 'anodizado' && v !== 'cromado';
+      });
+      const match = matchOption(finForSer, serColorParam);
+      if (match) form.setValue('serigrafiaColor', match, { shouldDirty: false });
+    }
     // Towel/shelf color modes (enums), accept ?towel=padrao&... or ?towelColor=...
     const towel = (search.get('towel') ?? search.get('towelColor'))?.toLowerCase();
     if (towel === 'padrao' || towel === 'acabamento') {
@@ -688,7 +729,7 @@ React.useEffect(() => {
       }
     }
     const housing = search.get('housing') ?? search.get('housingType');
-    if (housing) form.setValue('housingType', housing, { shouldDirty: false });
+    setIf('housingType', matchOption(HOUSING_TYPES as any, housing));
     const floor = asInt(search.get('floor') ?? search.get('floorNumber'));
     if (floor != null) form.setValue('floorNumber', floor, { shouldDirty: false });
     const elev = asBool(search.get('elevator') ?? search.get('hasElevator'));
@@ -722,7 +763,12 @@ React.useEffect(() => {
     const rm = new Set(rule.removeFinishes.map(v => v.toLowerCase()));
     return all.filter(f => !rm.has(f.value.toLowerCase()));
   }, [catalog, rule]);
-
+  const finishesNoChromeAnod = React.useMemo(() => {
+    return finishes.filter(f => {
+      const v = f.value.toLowerCase();
+      return v !== 'anodizado' && v !== 'cromado';
+    });
+  }, [finishes]);
   const glassTipos = React.useMemo(() => catalog?.['GLASS_TIPO'] ?? [], [catalog]);
   const monos = React.useMemo(() => catalog?.['MONOCROMATICO'] ?? [], [catalog]);
   const complemento = React.useMemo(() => catalog?.['COMPLEMENTO'] ?? [], [catalog]);
@@ -946,6 +992,18 @@ function isStrongOrPainelModel(key?: string) {
   const k = key.toLowerCase();
   return k.includes('strong') || k.includes('painel');
 }
+
+
+// === "Tipo de Habitação" options (dropdown) ===
+const HOUSING_TYPES: { value: string; label: string }[] = [
+  { value: 'moradia',        label: 'Moradia' },
+  { value: 'apartamento',    label: 'Apartamento' },
+  { value: 'res_do_chao',    label: 'Rés-do-chão' },
+  { value: 'andar_moradia',  label: 'Andar de Moradia' },
+  { value: 'loft',           label: 'Loft' },
+  { value: 'estudio',        label: 'Estúdio' },
+  { value: 'outro',          label: 'Outro' },
+];
 /** Hard map models to their section. Extend keys as needed. */
 function classifyModelGroupByKey(key: string, label: string) {
   const k = key.toLowerCase();
@@ -1350,12 +1408,11 @@ React.useEffect(() => {
                     <IconSelect
                       value={(field.value ?? '') as string}
                       onChange={(v) => field.onChange(v || undefined)}
-                      options={serigrafiaColorOptions}
-                      // Padrão -> Fosco | Acabamento -> preview do "Acabamento" atual
-                      getIcon={(opt) => serigrafiaColorIconSrc(opt.value as 'padrao'|'acabamento', selectedFinish)}
+                      options={finishesNoChromeAnod as any}
+                      getIcon={(opt) => finishIconSrc(opt.value)}
                       iconSize={36}
                       itemIconSize={48}
-                      placeholder="—"
+                      placeholder="Selecionar"
                     />
                   )}
                 />
@@ -1367,11 +1424,16 @@ React.useEffect(() => {
 
         {/* Below: single-row sections (unchanged logic, styled) */}
         <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-          <h2 className="mb-3 text-lg font-medium text-neutral-900">Medidas</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <NumField f={form} name="widthMm" label="Largura (cm)" />
+          <h2 className="mb-1 text-lg font-medium text-neutral-900">Medidas</h2>
+          <p className="mb-3 text-sm text-neutral-600">
+            Não precisa estar 100% exato nesta fase: a nossa equipa desloca-se à sua casa
+            para confirmar as medidas antes da produção. Indique valores próximos da realidade
+            para podermos enviar um orçamento o mais preciso possível.
+          </p>
+          <div className={`grid grid-cols-1 ${hideDepth ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-3`}>
+            <NumField f={form} name="widthMm"  label="Largura (cm)" />
             <NumField f={form} name="heightMm" label="Altura (cm)" />
-            <NumField f={form} name="depthMm" label="Profundidade (cm)" />
+            {!hideDepth && <NumField f={form} name="depthMm"  label="Profundidade (cm)" />}
           </div>
           <div className="mt-2">
             <Checkbox f={form} name="willSendLater" label="Enviarei as medidas mais tarde" />
@@ -1395,7 +1457,14 @@ React.useEffect(() => {
             ]}
           />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Text f={form} name="housingType" label="Tipo de Habitação" />
+            <Select
+              f={form}
+              name="housingType"
+              label="Tipo de Habitação"
+              allowEmpty
+              emptyLabel="Selecionar"
+              options={HOUSING_TYPES as any}
+            />
             <NumField f={form} name="floorNumber" label="Andar" />
             <Checkbox f={form} name="hasElevator" label="Tem elevador?" />
           </div>
