@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import OrderActionsModal from '@/components/orders/OrderActionsModal';
 import { ChangeStatusModal } from '@/components/orders/ChangeStatusModal';
 import { EditOrderModal } from '@/components/orders/EditOrderModal';
+import { BulkChangeStatusModal } from '@/components/orders/BulkChangeStatusModal';
 
 type Status = 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE';
 type OrderRow = {
@@ -13,6 +14,7 @@ type OrderRow = {
   shortId: string;
   customer: { name: string };
   status: Status;
+  visitAwaiting?: boolean;
   eta: string | null;
   model: string | null;
   createdAt: string;
@@ -91,6 +93,51 @@ export default function OrdersClient() {
   const [editPayload, setEditPayload] = useState<any | null>(null);
   const [editLoading, setEditLoading] = useState(false);
 
+
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
+
+  function toggleOne(id: string) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  }
+  const allIds = rows.map(r => r.id);
+  const allChecked = selected.length > 0 && selected.length === allIds.length;
+  const someChecked = selected.length > 0 && selected.length < allIds.length;
+  function toggleAll() {
+    setSelected(prev => (prev.length === allIds.length ? [] : allIds));
+  }
+  useEffect(() => {
+    // prune selection when list refetches
+    const setIds = new Set(allIds);
+    setSelected(prev => prev.filter(id => setIds.has(id)));
+  }, [rows]);
+  type UiStatus = 'AGUARDA_VISITA' | 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE';
+  function toUiStatus(r: OrderRow): UiStatus {
+    return r.status === 'PREPARACAO' && r.visitAwaiting ? 'AGUARDA_VISITA' : (r.status as UiStatus);
+  }
+  const selectedRows = rows.filter(r => selected.includes(r.id));
+  const commonCurrent: UiStatus | null = (() => {
+    if (!selectedRows.length) return null;
+    const first = toUiStatus(selectedRows[0]);
+    return selectedRows.every(r => toUiStatus(r) === first) ? first : null;
+  })();
+  // Map filters -> URLSearchParams (handles the special 'Aguarda visita')
+  function fillListParams(usp: URLSearchParams, opts?: { cursor?: string }) {
+    if (debouncedSearch) usp.set('search', debouncedSearch);
+
+    // special case for "Aguarda visita": we don't send status, we send visit=1
+    const s = (status || '') as string;
+    if (s === 'AGUARDA_VISITA') {
+      usp.set('visit', '1');
+    } else if (s) {
+      usp.set('status', s as Status);
+    }
+
+    if (model) usp.set('model', model);
+    if (opts?.cursor) usp.set('cursor', opts.cursor);
+    usp.set('take', String(PAGE_SIZE));
+  }
+
   // sync filters to URL
   useEffect(() => {
     const usp = new URLSearchParams();
@@ -109,10 +156,7 @@ export default function OrdersClient() {
 
     (async () => {
       const usp = new URLSearchParams();
-      if (debouncedSearch) usp.set('search', debouncedSearch);
-      if (status) usp.set('status', status);
-      if (model) usp.set('model', model);
-      usp.set('take', String(PAGE_SIZE));
+      fillListParams(usp);
 
       const r = await fetch(`/api/orders?${usp.toString()}`, { cache: 'no-store' });
       if (!alive) return;
@@ -137,11 +181,8 @@ export default function OrdersClient() {
     setLoadingMore(true);
 
     const usp = new URLSearchParams();
-    if (debouncedSearch) usp.set('search', debouncedSearch);
-    if (status) usp.set('status', status);
-    if (model) usp.set('model', model);
-    usp.set('cursor', cursor);
-    usp.set('take', String(PAGE_SIZE));
+    // ensure we only pass a string (not null)
+    fillListParams(usp, { cursor: cursor ?? undefined });
 
     const r = await fetch(`/api/orders?${usp.toString()}`, { cache: 'no-store' });
     if (!r.ok) { setLoadingMore(false); return; }
@@ -156,10 +197,7 @@ export default function OrdersClient() {
     setCursor(null);
 
     const usp = new URLSearchParams();
-    if (debouncedSearch) usp.set('search', debouncedSearch);
-    if (status) usp.set('status', status);
-    if (model) usp.set('model', model);
-    usp.set('take', String(PAGE_SIZE));
+    fillListParams(usp);
 
     const r = await fetch(`/api/orders?${usp.toString()}`, { cache: 'no-store' });
     if (!r.ok) { setRows([]); setTotal(0); setCursor(null); setLoading(false); return; }
@@ -270,6 +308,11 @@ useEffect(() => {
     },
 
     files: Array.isArray(data.filesJson) ? data.filesJson : [],
+     state: {                                     // <— NEW
+    status:        f.state?.status ?? 'PREPARACAO',
+    visitAwaiting: !!f.state?.visitAwaiting,
+    visitAt:       f.state?.visitAt ?? null,
+  },
   });
   setEditLoading(false);
   return;
@@ -379,6 +422,7 @@ useEffect(() => {
           className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="">Estado</option>
+          <option value="AGUARDA_VISITA">Aguarda visita</option>
           <option value="PREPARACAO">Em preparação</option>
           <option value="PRODUCAO">Em produção</option>
           <option value="EXPEDICAO">Em expedição</option>
@@ -395,6 +439,13 @@ useEffect(() => {
             <option key={m.value} value={m.value}>{m.label}</option>
           ))}
         </select>
+         {selected.length > 0 && (
+          <button
+            onClick={() => setBulkOpen(true)}
+            className="rounded-lg bg-primary px-3 py-1.5 text-white hover:bg-primary/90"          >
+            Mudar Estado em Bulk ({selected.length})
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -402,6 +453,15 @@ useEffect(() => {
         <table className="min-w-full text-sm">
           <thead>
             <tr className="bg-muted/40 text-muted-foreground">
+              <Th className="w-10 pl-6">
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  ref={(el) => { if (el) el.indeterminate = someChecked; }}
+                  onChange={toggleAll}
+                  aria-label="Selecionar todos"
+                />
+              </Th>
               <Th className="w-36 pl-6">ID do pedido</Th>
               <Th>Cliente</Th>
               <Th>Estado</Th>
@@ -417,27 +477,57 @@ useEffect(() => {
               <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Sem resultados.</td></tr>
             ) : (
               rows.map((r, idx) => (
-                <tr key={r.id} className={idx % 2 ? 'bg-muted/20' : ''}>
-                  <Td className="pl-6 font-medium text-foreground">{r.shortId}</Td>
-                  <Td className="text-foreground">{r.customer?.name}</Td>
-                  <Td><StatusBadge status={r.status} /></Td>
-                  <Td className="text-foreground">{r.eta ? new Date(r.eta).toLocaleDateString('pt-PT') : 'Em curso'}</Td>
-                  <Td className="text-foreground">{r.model ?? 'Diversos'}</Td>
-                  <Td className="pr-6 text-right">
-                    <button
-                      onClick={() => setActionsFor({ id: r.id, status: r.status })}
-                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-primary hover:bg-primary/10"
-                      title="Editar"
-                      type="button"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M12 20h9" />
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                      </svg>
-                    </button>
-                  </Td>
-                </tr>
-              ))
+              <tr key={r.id} className={idx % 2 ? 'bg-muted/20' : ''}>
+                <Td className="pl-6">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(r.id)}
+                    onChange={() => toggleOne(r.id)}
+                    aria-label={`Selecionar ${r.shortId}`}
+                  />
+                </Td>
+                {/* ID do pedido */}
+                <Td className="pl-6 font-medium text-foreground">{r.shortId}</Td>
+
+                {/* Cliente */}
+                <Td className="text-foreground">{r.customer?.name}</Td>
+
+                {/* Estado  ✅ “Aguarda visita” when PREPARACAO + visitAwaiting */}
+                <Td className="text-foreground">
+                  {r.status === 'PREPARACAO' && r.visitAwaiting ? (
+                    <span className="inline-flex items-center rounded-full bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                      <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                      Aguarda visita
+                    </span>
+                  ) : (
+                    <StatusBadge status={r.status} />
+                  )}
+                </Td>
+
+                {/* Conclusão (ETA) */}
+                <Td className="text-foreground">
+                  {r.eta ? new Date(r.eta).toLocaleDateString('pt-PT') : 'Em curso'}
+                </Td>
+
+                {/* Modelo */}
+                <Td className="text-foreground">{r.model ?? 'Diversos'}</Td>
+
+                {/* Ações */}
+                <Td className="pr-6 text-right">
+                  <button
+                    onClick={() => setActionsFor({ id: r.id, status: r.status })}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-primary hover:bg-primary/10"
+                    title="Editar"
+                    type="button"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                    </svg>
+                  </button>
+                </Td>
+              </tr>
+            ))
             )}
           </tbody>
         </table>
@@ -469,14 +559,22 @@ useEffect(() => {
         />
       )}
 
-      {changeFor && (
-        <ChangeStatusModal
-          orderId={changeFor.id}
-          current={changeFor.status}
-          onClose={() => setChangeFor(null)}
-          onChanged={refetch}
-        />
-      )}
+      {changeFor && (() => {
+        const row = rows.find((x) => x.id === changeFor.id);
+        const currentForModal =
+          row && row.status === 'PREPARACAO' && row.visitAwaiting
+            ? 'AGUARDA_VISITA'
+            : (row?.status ?? changeFor.status);
+
+        return (
+          <ChangeStatusModal
+            orderId={changeFor.id}
+            current={currentForModal as any} // ChangeStatusModal accepts 'AGUARDA_VISITA' union
+            onClose={() => setChangeFor(null)}
+            onChanged={refetch}
+          />
+        );
+      })()}
 
       {editFor && (editLoading ? (
         <div className="fixed inset-0 z-[101] grid place-items-center bg-black/40">
@@ -489,6 +587,15 @@ useEffect(() => {
           onSaved={refetch}
         />
       ) : null)}
+
+      {bulkOpen && (
+        <BulkChangeStatusModal
+          orderIds={selected}
+          commonCurrent={commonCurrent}
+          onClose={() => setBulkOpen(false)}
+          onChanged={() => { setSelected([]); refetch(); }}
+        />
+      )}
     </div>
   );
 }

@@ -114,6 +114,7 @@ export async function GET(_req: Request, ctx: any) {
     eta: order.eta ? order.eta.toISOString() : null,
     clientName: order.customer?.name ?? null,
     requiresConfirmation,
+    visitAwaiting: order.visitAwaiting,
     pdfUrl: order.createdFromBudget?.quotedPdfUrl ?? null,
     
     delivery: {

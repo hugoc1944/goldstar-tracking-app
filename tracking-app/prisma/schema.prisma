@@ -42,6 +42,9 @@ model Order {
   confirmedAt          DateTime?        // null until client confirms
   createdFromBudget Budget? @relation(name: "BudgetToOrder")
 
+  visitAwaiting  Boolean  @default(false)
+  visitAt        DateTime?
+
   @@index([status])
   @@index([publicToken])
 }
@@ -66,7 +69,8 @@ model StatusEvent {
   orderId   String
   from      OrderStatus?
   to        OrderStatus
-  byAdminId String
+  byAdminId  String?                         // <- make optional
+
   note      String?
   at        DateTime     @default(now())
   order     Order        @relation(fields: [orderId], references: [id])

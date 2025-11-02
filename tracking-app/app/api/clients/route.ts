@@ -1,61 +1,97 @@
 // app/api/clients/route.ts
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { requireAdminSession } from '@/lib/auth-helpers';
+
+
+const CreateClient = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().optional().nullable(),
+  nif: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
+  postal: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+});
 
 export const runtime = 'nodejs'; 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const search = (url.searchParams.get('search') ?? '').trim();
-  const take = Math.min(parseInt(url.searchParams.get('take') ?? '20', 10) || 20, 50);
-  const cursor = url.searchParams.get('cursor');
+  const { searchParams } = new URL(req.url);
+  const search = (searchParams.get('search') || '').trim();
+  const take = Math.min(parseInt(searchParams.get('take') || '20', 10), 100);
+  const cursor = searchParams.get('cursor');
 
-  const where: any = {};
-  if (search) {
-    where.name = { contains: search, mode: 'insensitive' };
-  }
+  // 🔧 List ALL clients (including those with zero orders)
+  const where: any = search
+    ? {
+        OR: [
+          { name:  { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search, mode: 'insensitive' } },
+        ],
+      }
+    : undefined;
 
-  const clients = await prisma.customer.findMany({
-    where: {
-      orders: {
-        some: {
-          confirmedAt: { not: null }, // ✅ only clients with at least one confirmed order
-        },
-      },
-    },
-    take: take + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  const rowsDb = await prisma.customer.findMany({
+    where,
+    take,
+    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       name: true,
       email: true,
-      _count: {
-        select: {
-          //count only confirmed orders
-          orders: { where: { confirmedAt: { not: null } } },
-        },
-      },
+      createdAt: true,
+      _count: { select: { orders: true } },   // 👈 count orders safely
     },
   });
 
-  const hasMore = clients.length > take;
-  const page = hasMore ? clients.slice(0, take) : clients;
+  const total = await prisma.customer.count({ where }); // 👈 use SAME where
 
-  const rows = page.map((c) => ({
+  const mapped = rowsDb.map((c) => ({
     id: c.id,
-    shortId: `#${c.id.slice(0,4)}`,                                  // unified short id
+    shortId: `#${c.id.slice(0, 4)}`,          // adapt if you persist shortId
     name: c.name,
     email: c.email,
     ordersCount: c._count.orders,
-    status: (c._count.orders > 1 ? 'Cliente usual' : 'Novo cliente') as
-      'Novo cliente' | 'Cliente usual',
+    status: c._count.orders > 0 ? 'Cliente usual' : 'Novo cliente',
   }));
 
-  const total = await prisma.customer.count({ where });
+  const nextCursor = rowsDb.length === take ? rowsDb[rowsDb.length - 1].id : null;
 
   return NextResponse.json({
-    rows,
+    rows: mapped,
     total,
-    nextCursor: hasMore ? clients[clients.length - 1].id : null,
+    nextCursor,
   });
+}
+
+export async function POST(req: Request) {
+  await requireAdminSession(); // only admins
+  const body = CreateClient.parse(await req.json());
+
+  // Optional: dedupe by email
+  const existing = await prisma.customer.findFirst({
+    where: { email: body.email },
+    select: { id: true },
+  });
+  if (existing) {
+    return NextResponse.json({ error: 'Já existe um cliente com este email.' }, { status: 409 });
+  }
+
+  const c = await prisma.customer.create({
+    data: {
+      name: body.name,
+      email: body.email,
+      phone: body.phone ?? undefined,
+      nif: body.nif ?? undefined,
+      address: body.address ?? undefined,
+      postal: body.postal ?? undefined,
+      city: body.city ?? undefined,
+    },
+    select: { id: true, name: true, email: true },
+  });
+
+  return NextResponse.json({ ok: true, client: c }, { status: 201});
 }

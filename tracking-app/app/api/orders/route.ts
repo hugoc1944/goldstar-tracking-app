@@ -216,7 +216,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const rawSearch = (url.searchParams.get('search') ?? '').trim();
   const status = url.searchParams.get('status') as
-    | 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE' | null;
+   'AGUARDA_VISITA' | 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE' | null;
   const model = url.searchParams.get('model') ?? '';
   const take = Math.min(parseInt(url.searchParams.get('take') ?? '20', 10) || 20, 50);
   const cursor = url.searchParams.get('cursor');
@@ -224,7 +224,18 @@ export async function GET(req: Request) {
   let search = rawSearch;
   if (search.startsWith('#')) search = search.slice(1);
 
+
+  
   const where: any = {};
+  if (!('status' in where) || !where.status) {
+    where.status = { not: 'ENTREGUE' };
+  }
+  if (status === 'AGUARDA_VISITA') {
+    where.status = 'PREPARACAO';
+    where.visitAwaiting = true;
+  } else if (status) {
+    where.status = status;
+  }
   where.confirmedAt = { not: null };
   if (status) where.status = status;
 
@@ -260,6 +271,7 @@ export async function GET(req: Request) {
     shortId: '#' + o.id.slice(0, 4),
     customer: { name: o.customer?.name ?? '' },
     status: o.status,
+    visitAwaiting: (o as any).visitAwaiting ?? false,
     eta: o.eta ? o.eta.toISOString() : null,
     model: o.items[0]?.model ?? null,
     createdAt: o.createdAt.toISOString(),

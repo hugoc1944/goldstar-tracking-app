@@ -36,8 +36,7 @@ type Payload = {
   clientName: string | null;
   items: PublicItem[];
   events: Array<{ from: Step; to: Step; at: string; note: string | null }>;
-
-  // NEW (optional on the API; UI is resilient)
+  visitAwaiting?: boolean;
   delivery?: DeliveryInfo;
   measures?: Measures;
   photoUrls?: string[] | null;
@@ -76,6 +75,18 @@ const PT: Record<Step, string> = {
   EXPEDICAO: 'Em expedição',
   ENTREGUE: 'Entregue',
 };
+
+function RailDot({ active }: { active: boolean }) {
+  // small green LED-like dot; “active” means the current left light on
+  return (
+    <span
+      aria-hidden
+      className={`inline-block h-2.5 w-2.5 rounded-full mr-2 ${
+        active ? 'bg-emerald-500' : 'bg-neutral-300'
+      }`}
+    />
+  );
+}
 
 function formatCustomizationValue(key: string, value: unknown): string {
   if (value == null) return '—';
@@ -392,7 +403,14 @@ export default function PublicOrderPage({
                         done ? 'text-neutral-900' : 'text-neutral-500'
                       }`}
                     >
-                      {PT[s]}
+                      {s === 'PREPARACAO' && data?.visitAwaiting ? (
+                        <span className="inline-flex items-center">
+                        <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-yellow-500" />
+                          Aguarda visita do técnico
+                        </span>
+                      ) : (
+                        PT[s]
+                      )}
                     </div>
                     <div className="text-xs text-neutral-500">{fmtDate(when)}</div>
                   </div>

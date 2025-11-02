@@ -1426,8 +1426,8 @@ React.useEffect(() => {
         <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
           <h2 className="mb-1 text-lg font-medium text-neutral-900">Medidas</h2>
           <p className="mb-3 text-sm text-neutral-600">
-            Não precisa estar 100% exato nesta fase: a nossa equipa desloca-se à sua casa
-            para confirmar as medidas antes da produção. Indique valores próximos da realidade
+            As medidas não necessitam estar 100% exatas: a nossa equipa <b>desloca-se à sua casa </b>
+             para confirmar antes da produção. Indique valores próximos da realidade
             para podermos enviar um orçamento o mais preciso possível.
           </p>
           <div className={`grid grid-cols-1 ${hideDepth ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-3`}>

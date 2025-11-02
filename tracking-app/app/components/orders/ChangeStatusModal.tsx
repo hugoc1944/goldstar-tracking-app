@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-type Status = 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE';
+type Status = 'AGUARDA_VISITA' | 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE';
 
 const LABEL: Record<Status, string> = {
+  AGUARDA_VISITA: 'Aguarda visita', // <- NEW
   PREPARACAO: 'Em preparação',
   PRODUCAO: 'Em produção',
   EXPEDICAO: 'Em expedição',
@@ -13,6 +14,7 @@ const LABEL: Record<Status, string> = {
 };
 
 const FLOW: Record<Status, Status | null> = {
+  AGUARDA_VISITA: 'PREPARACAO',
   PREPARACAO: 'PRODUCAO',
   PRODUCAO: 'EXPEDICAO',
   EXPEDICAO: 'ENTREGUE',
@@ -54,11 +56,49 @@ export function ChangeStatusModal({
   useScrollLock(true);
 
   const [to, setTo] = useState<Status>(current);
-  const [eta, setEta] = useState('');
   const [saving, setSaving] = useState(false);
-  const [etaLocal, setEtaLocal] = useState(''); // e.g. "2025-11-05T14:30"
+
+  // Local pickers
+  const [etaLocal, setEtaLocal] = useState('');        // EXPEDIÇÃO only
+  const [visitAtLocal, setVisitAtLocal] = useState(''); // AGUARDA_VISITA only
+  function isoToLocal(iso: string) {
+    const d = new Date(iso);
+    const off = d.getTimezoneOffset();
+    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
+  }
+
+  const [initialVisitAtLocal, setInitialVisitAtLocal] = useState('');
+
+  // Prefill the visit date when the order is in "Aguarda visita"
+  useEffect(() => {
+    if (current !== 'AGUARDA_VISITA') return;
+    (async () => {
+      try {
+        const r = await fetch(`/api/orders/${orderId}`, { cache: 'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+        const iso = data?.forModal?.state?.visitAt ?? null;
+        if (iso) {
+          const v = isoToLocal(iso);
+          setVisitAtLocal(v);
+          setInitialVisitAtLocal(v);
+        }
+      } catch {}
+    })();
+  }, [orderId, current]);
+  const nowLocal = useMemo(() => {
+    const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+    return d.toISOString().slice(0, 16);
+  }, []);
+
   const next = FLOW[current];
-  const needETA = to === 'EXPEDICAO';
+  const showEta = to === 'EXPEDICAO';
+  const showVisit = to === 'AGUARDA_VISITA';
+
+  useEffect(() => {
+    if (to !== 'EXPEDICAO') setEtaLocal('');
+    if (to !== 'AGUARDA_VISITA') setVisitAtLocal('');
+  }, [to]);
 
   // ESC to close
   useEffect(() => {
@@ -70,19 +110,21 @@ export function ChangeStatusModal({
   }, [onClose]);
 
   async function submit() {
-    if (needETA && !etaLocal) {
-      alert('ETA é obrigatória para Expedição.');
-      return;
-    }
+    const payload: any = { action: 'status', to };
 
-    const etaISO = etaLocal ? `${etaLocal}:00Z` : null;
+    if (to === 'EXPEDICAO' && etaLocal) {
+      payload.eta = new Date(etaLocal).toISOString();
+    }
+    if (to === 'AGUARDA_VISITA' && visitAtLocal) {
+      payload.visitAt = new Date(visitAtLocal).toISOString();
+    }
 
     setSaving(true);
     try {
       const r = await fetch(`/api/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'status', to, eta: etaISO || null }),
+        body: JSON.stringify(payload),
       });
       if (!r.ok) throw new Error('Falha ao alterar estado');
       onChanged();
@@ -93,6 +135,12 @@ export function ChangeStatusModal({
   }
 
   if (!Portal) return null;
+
+  const stateChanged = to !== current;
+  const visitChanged = to === 'AGUARDA_VISITA' && visitAtLocal && visitAtLocal !== initialVisitAtLocal;
+  const btnLabel = stateChanged ? 'Alterar Estado' : 'Guardar Estado';
+  const canSubmit = stateChanged || visitChanged || (to === 'EXPEDICAO' && !!etaLocal);
+
 
   return Portal(
     <div
@@ -149,6 +197,7 @@ export function ChangeStatusModal({
                 onChange={(e) => setTo(e.target.value as Status)}
                 className="w-56 appearance-none rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 pr-9 text-sm outline-none ring-0 focus:border-zinc-400"
               >
+                <option value="AGUARDA_VISITA">{LABEL.AGUARDA_VISITA}</option>
                 <option value="PREPARACAO">{LABEL.PREPARACAO}</option>
                 <option value="PRODUCAO">{LABEL.PRODUCAO}</option>
                 <option value="EXPEDICAO">{LABEL.EXPEDICAO}</option>
@@ -160,30 +209,46 @@ export function ChangeStatusModal({
             </div>
           </div>
 
-          {/* ETA (only for EXPEDICAO) */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-700">
-              Data Estimada de Entrega {needETA && <span className="text-red-500">*</span>}
-            </label>
-            <div className="flex items-center gap-2">
+          {/* Data da Visita — only for "Aguarda visita" */}
+          {showVisit && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700">
+                Data da Visita <span className="text-zinc-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={visitAtLocal}
+                onChange={(e) => setVisitAtLocal(e.target.value)}
+                className="w-64 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400"
+                min={nowLocal}
+              />
+            </div>
+          )}
+
+          {/* ETA — only for "Em expedição" */}
+          {showEta && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700">
+                Data Estimada de Entrega <span className="text-zinc-400 font-normal">(opcional)</span>
+              </label>
               <input
                 type="datetime-local"
                 value={etaLocal}
                 onChange={(e) => setEtaLocal(e.target.value)}
                 className="w-64 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400"
-                disabled={!needETA}
+                min={nowLocal}
               />
             </div>
-          </div>
+          )}
 
           {/* Submit */}
           <div className="flex justify-end">
             <button
               onClick={submit}
-              disabled={saving}
+              disabled={saving || !canSubmit}
               className="rounded-xl bg-yellow-400 px-5 py-3 text-sm font-semibold text-zinc-900 shadow-sm hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {saving ? 'A guardar…' : 'Alterar Estado'}
+              {saving ? 'A guardar…' : btnLabel}
             </button>
           </div>
         </div>
