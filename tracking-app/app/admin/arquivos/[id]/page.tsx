@@ -3,6 +3,17 @@
 import {use, useEffect, useRef, useState } from 'react';
 import AdminShell from '@/components/admin/AdminShell';
 
+function GsSpinner({ size = 14, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
+  const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
+  return (
+    <span
+      className={["inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]", className].join(' ')}
+      style={s}
+      aria-hidden
+    />
+  );
+}
+
 type FileMeta = { url: string; name: string; size: number; mime?: string | null };
 
 type Data = {
@@ -48,6 +59,8 @@ export default function ArchiveDetail({
   // ⬇️ add these two lines
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const [deletingUrl, setDeletingUrl] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -95,6 +108,32 @@ export default function ArchiveDetail({
       setSaving(false);
     }
   }
+  async function onDeleteFile(url: string) {
+  if (!data) return;
+  if (!confirm('Apagar ficheiro?')) return;
+
+  setDeletingUrl(url);
+  try {
+    const current = data.files || [];
+    const next = current.filter((f) => {
+      const href = typeof f.url === 'string' ? f.url : String((f as any)?.url ?? '');
+      return href !== url;
+    });
+
+    const r = await fetch(`/api/orders/${data.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', files: next }),
+    });
+    if (!r.ok) throw new Error('Falha a apagar ficheiro');
+
+    await load(); // 🔁 refresh list
+  } catch (e: any) {
+    alert(e?.message ?? 'Erro ao apagar ficheiro');
+  } finally {
+    setDeletingUrl(null);
+  }
+}
 
   if (!data) {
     return (
@@ -109,7 +148,7 @@ export default function ArchiveDetail({
   return (
     <AdminShell>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold">Arquivo — {data.shortId}</h1>
+        <h1 className="text-2xl font-semibold">Arquivo - {data.shortId}</h1>
         <p className="text-sm text-muted-foreground">
           Entregue em {data.deliveredAt ? new Date(data.deliveredAt).toLocaleString('pt-PT') : '—'}
         </p>
@@ -176,14 +215,27 @@ export default function ArchiveDetail({
                         <div className="truncate text-sm font-medium text-foreground">{displayName}</div>
                         <div className="truncate text-xs text-muted-foreground">{href}</div>
                     </div>
-                    <a
+                    <div className="flex items-center gap-2">
+                      <a
                         className="rounded-lg px-2 py-1 text-sm text-primary hover:bg-primary/10"
                         href={href}
                         target="_blank"
                         rel="noopener noreferrer"
-                    >
+                      >
                         Abrir
-                    </a>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => onDeleteFile(href)}
+                        disabled={deletingUrl === href || saving}
+                        className="rounded-lg px-2 py-1 text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
+                        title="Apagar ficheiro"
+                        aria-label="Apagar ficheiro"
+                      >
+                        {deletingUrl === href ? <GsSpinner /> : '×'}
+                      </button>
+                    </div>
                     </li>
                 );
                 })}

@@ -5,6 +5,17 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AdminShell from '@/components/admin/AdminShell';
 
+function GsSpinner({ size = 14, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
+  const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
+  return (
+    <span
+      className={["inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]", className].join(' ')}
+      style={s}
+      aria-hidden
+    />
+  );
+}
+
 type Row = {
   id: string;
   shortId: string; // e.g. #c5b1
@@ -55,6 +66,8 @@ function ClientsPageInner() {
 
   const [data, setData] = useState<ClientsPayload | null>(null);
   const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  useEffect(() => { router.prefetch('/admin/clients/new'); }, [router]);
 
   // sync query to URL + fetch first page whenever search changes
   useEffect(() => {
@@ -128,13 +141,28 @@ function ClientsPageInner() {
             />
           </div>
 
-          <Link
-            href="/admin/clients/new"
+          <button
+            type="button"
+            onClick={() => {
+              if (creating) return;
+              setCreating(true);
+              router.push('/admin/clients/new');
+            }}
+            disabled={creating}
+            aria-busy={creating}
             className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium
-                      text-primary-foreground hover:bg-primary/90 whitespace-nowrap leading-none shrink-0"
+                      text-primary-foreground hover:bg-primary/90 whitespace-nowrap leading-none shrink-0
+                      disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Adicionar Cliente
-          </Link>
+            {creating ? (
+              <>
+                <GsSpinner />
+                <span>A abrir…</span>
+              </>
+            ) : (
+              'Adicionar Cliente'
+            )}
+          </button>
         </div>
       </header>
 

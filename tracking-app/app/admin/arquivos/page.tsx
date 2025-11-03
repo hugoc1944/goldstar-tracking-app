@@ -3,6 +3,18 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import AdminShell from '@/components/admin/AdminShell';
+import { useRouter } from 'next/navigation';
+
+function GsSpinner({ size = 14, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
+  const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
+  return (
+    <span
+      className={["inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]", className].join(' ')}
+      style={s}
+      aria-hidden
+    />
+  );
+}
 
 type Row = {
   id: string;
@@ -32,6 +44,9 @@ export default function ArchivesPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
+
+  const router = useRouter();
+  const [navigatingId, setNavigatingId] = useState<string | null>(null);
 
   const debounced = useDebounced(search);
 
@@ -129,12 +144,25 @@ export default function ArchivesPage() {
                 </td>
                 <td className="py-3 text-foreground">{r.model ?? 'Diversos'}</td>
                 <td className="py-3 pr-6 text-right">
-                  <Link
-                    href={`/admin/arquivos/${r.id}`}
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-primary hover:bg-primary/10"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigatingId) return;
+                      setNavigatingId(r.id);
+                      router.push(`/admin/arquivos/${r.id}`);
+                    }}
+                    disabled={navigatingId === r.id}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-primary hover:bg-primary/10 disabled:opacity-60"
                   >
-                    Ver
-                  </Link>
+                    {navigatingId === r.id ? (
+                      <>
+                        <GsSpinner />
+                        <span className="ml-1.5">A abrir…</span>
+                      </>
+                    ) : (
+                      'Ver'
+                    )}
+                  </button>
                 </td>
               </tr>
             ))}

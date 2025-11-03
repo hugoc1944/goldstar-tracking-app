@@ -4,9 +4,23 @@ import * as React from 'react';
 import { z } from 'zod';
 import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter } from 'next/navigation';
 
 /* ---------------- Schema (admin version) ---------------- */
-
+/* --- Loader (Goldstar) --- */
+function GsSpinner({ size = 16, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
+  const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
+  return (
+    <span
+      className={[
+        "inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]",
+        className,
+      ].join(' ')}
+      style={s}
+      aria-hidden
+    />
+  );
+}
 const NumOpt = z.preprocess(
   (v) => {
     if (v === '' || v == null) return undefined;
@@ -112,6 +126,8 @@ function normalizeForPatch(values: any) {
 /* ---------------- Editor ---------------- */
 
 export default function AdminBudgetEditor({ budget }: { budget: any }) {
+
+  const router = useRouter();
   const form = useForm<FormValues>({
     resolver: zodResolver(AdminBudgetSchema) as RHFResolver,
     defaultValues: {
@@ -168,6 +184,11 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
   // Catalog + rule (same as public page)
   const [catalog, setCatalog] = React.useState<Catalog | null>(null);
   const [rule, setRule] = React.useState<ModelRuleDTO | null>(null);
+
+  const [sending, setSending] = React.useState(false);
+  const [bgJob, setBgJob] = React.useState<{ id: string; status: 'queued'|'running'|'succeeded'|'failed'; pdf?: string } | null>(null);
+  const idempKeyRef = React.useRef((globalThis as any).crypto?.randomUUID?.() ?? String(Date.now()));
+
 
   React.useEffect(() => {
     (async () => {
@@ -299,8 +320,84 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
     alert(`Enviado. PDF: ${data.pdf ?? '—'}`);
   };
 
+  const handleSend = async () => {
+    if (sending) return;
+    setSending(true);
+
+  // --- VALIDATION (same as you had) ---
+  const priceCents = (s: string) => {
+    const n = Number(String(s || '0').replace(',', '.'));
+    return Math.round((Number.isFinite(n) ? n : 0) * 100);
+  };
+  const pCents = priceCents(priceEuro);
+  const wCm = Number(form.getValues('widthMm') ?? 0);
+  const hCm = Number(form.getValues('heightMm') ?? 0);
+  if (!pCents || pCents <= 0) { alert('Preço é obrigatório.'); setSending(false); return; }
+  if (!wCm || wCm <= 0)       { alert('Largura é obrigatória.'); setSending(false); return; }
+  if (!hCm || hCm <= 0)       { alert('Altura é obrigatória.');  setSending(false); return; }
+
+  // --- persist once (remove your duplicate PATCH) ---
+  const toMm = (cm?: number) => (cm == null ? undefined : Math.round(cm * 10));
+  const payload = {
+    ...form.getValues(),
+    priceCents: pCents,
+    installPriceCents: priceCents(installEuro),
+    widthMm:  toMm(form.getValues('widthMm')),
+    heightMm: toMm(form.getValues('heightMm')),
+    depthMm:  toMm(form.getValues('depthMm')),
+    notes: form.getValues('notes') || undefined,
+  };
+
+  try {
+    const patchRes = await fetch(`/api/budgets/${budget.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!patchRes.ok) {
+      const e = await patchRes.text();
+      throw new Error('Falha ao guardar alterações: ' + e);
+    }
+
+    // --- start convert/send (prefer async) ---
+    const convRes = await fetch(`/api/budgets/${budget.id}/convert`, {
+  method: 'POST',
+  headers: {
+    'Prefer': 'respond-async',
+    'X-Idempotency-Key': idempKeyRef.current,
+  },
+});
+
+  // ASYNC: server queued job (202)
+  if (convRes.status === 202) {
+    const { jobId, status } = await convRes.json().catch(() => ({}));
+    setBgJob({ id: jobId, status: status ?? 'queued' });
+    setSending(false);
+
+    alert('Sucesso!');               
+    router.replace('/admin/orcamentos');
+    return;
+  }
+
+  // SYNC: finished now (200)
+  const data = await convRes.json().catch(() => ({}));
+  if (!convRes.ok) throw new Error(data?.error ?? 'Falha ao enviar orçamento');
+
+  alert('Sucesso!');           
+  router.replace('/admin/orcamentos'); 
+  } catch (err: any) {
+    alert(err?.message ?? 'Falha ao enviar orçamento');
+  } finally {
+    setSending(false);
+  }
+};
+const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
+
+
   /* ---------------- UI ---------------- */
 
+
+  
   return (
     <div className="space-y-8">
       {/* TWO COLUMNS */}
@@ -523,64 +620,28 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
 
     {/* Enviar Orçamento */}
     <div className="pt-2">
-        <button
+      <button
         type="button"
         className="px-4 py-2 rounded text-black"
-        style={{ backgroundColor: '#FFCC00' /* Goldstar yellow */ }}
-        onClick={async () => {
-        // required: preço, largura, altura
-        const w = Number(form.getValues('widthMm') ?? 0);
-        const h = Number(form.getValues('heightMm') ?? 0);
+        style={{ backgroundColor: '#FFCC00' }}
+        onClick={handleSend}
+        disabled={sending || isJobBusy}
+        aria-busy={sending}
+      >
+        {sending ? (
+          <span className="inline-flex items-center">
+            <GsSpinner />
+            <span className="ml-2">A enviar…</span>
+          </span>
+        ) : 'Enviar Orçamento'}
+      </button>
 
-        const pCents = euroToCents(priceEuro);
-        const wCm = form.getValues('widthMm');
-        const hCm = form.getValues('heightMm');
-        const dCm = form.getValues('depthMm');
-        const toMm = (cm?: number) => (cm == null ? undefined : Math.round(cm * 10));
-        if (!pCents || pCents <= 0) { alert('Preço é obrigatório.'); return; }
-        if (!w || w <= 0)           { alert('Largura é obrigatória.'); return; }
-        if (!h || h <= 0)           { alert('Altura é obrigatória.');  return; }
-
-        // 1) Persist **all** current form values first (so convert uses fresh data)
-        const current = form.getValues();
-        const payload = normalizeForPatch({
-        ...form.getValues(),
-        priceCents: euroToCents(priceEuro),
-        installPriceCents: euroToCents(installEuro),
-        widthMm:  toMm(wCm),
-        heightMm: toMm(hCm),
-        depthMm:  toMm(dCm),
-        // keep delivery fields as-is
-        });
-        const patchRes = await fetch(`/api/budgets/${budget.id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-        });
-        if (!patchRes.ok) {
-        const err = await patchRes.text();
-        alert('Falha ao guardar alterações: ' + err);
-        return;
-        }
-
-        await fetch(`/api/budgets/${budget.id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-        });
-
-        // 2) Convert → PDF → email → (Order)
-        const convRes = await fetch(`/api/budgets/${budget.id}/convert`, { method: 'POST' });
-        const conv = await convRes.json().catch(() => ({}));
-        if (!convRes.ok) {
-            alert(conv?.error ?? 'Falha ao enviar orçamento');
-            return;
-        }
-        alert(`Orçamento enviado. PDF: ${conv?.pdf ?? '—'}`);
-        }}
-        >
-        Enviar Orçamento
-        </button>
+      {/* Optional: tiny status under the button when async is running */}
+      {bgJob && (bgJob.status === 'queued' || bgJob.status === 'running') ? (
+        <div className="mt-2 text-sm text-neutral-600">
+          Envio em segundo plano… (Job {bgJob.id})
+        </div>
+      ) : null}
     </div>
     </section>
     </div>

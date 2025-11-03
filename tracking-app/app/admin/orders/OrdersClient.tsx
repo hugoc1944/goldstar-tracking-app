@@ -31,7 +31,16 @@ const STATUS_LABEL: Record<Status, string> = {
   EXPEDICAO: 'Em expedição',
   ENTREGUE: 'Entregue',
 };
-
+function GsSpinner({ size = 14, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
+  const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
+  return (
+    <span
+      className={["inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]", className].join(' ')}
+      style={s}
+      aria-hidden
+    />
+  );
+}
 function StatusBadge({ status }: { status: Status }) {
   const label = STATUS_LABEL[status];
   const cls =
@@ -77,6 +86,8 @@ export default function OrdersClient() {
   const [status, setStatus] = useState<Status | ''>((sp.get('status') as Status) ?? '');
   const [model, setModel] = useState<string>(sp.get('model') ?? '');
   const debouncedSearch = useDebounced(search, 350);
+  const [creating, setCreating] = useState(false);
+  useEffect(() => { router.prefetch('/admin/orders/new'); }, [router]);
 
   // data state
   const [rows, setRows] = useState<OrderRow[]>([]);
@@ -391,12 +402,25 @@ useEffect(() => {
           <h1 className="text-2xl font-semibold">Pedidos</h1>
           <p className="text-sm text-muted-foreground">Gestão de pedidos GOLDSTAR</p>
         </div>
-        <Link
-          href="/admin/orders/new"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        <button
+          type="button"
+          onClick={() => {
+            if (creating) return;
+            setCreating(true);
+            router.push('/admin/orders/new'); // keep your route here
+          }}
+          disabled={creating}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
         >
-          Novo Pedido
-        </Link>
+          {creating ? (
+            <span className="inline-flex items-center">
+              <GsSpinner />
+              <span className="ml-2">A abrir…</span>
+            </span>
+          ) : (
+            'Novo Pedido'
+          )}
+        </button>
       </header>
 
       {/* Filters */}

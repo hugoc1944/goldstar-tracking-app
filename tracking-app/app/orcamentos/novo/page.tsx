@@ -11,6 +11,22 @@ import { Controller } from 'react-hook-form';
 import Image from 'next/image';
 import { Suspense } from 'react';
 
+
+/* --- Loader (Goldstar) --- */
+function GsSpinner({ size = 16, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
+  const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
+  return (
+    <span
+      className={[
+        "inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]",
+        className,
+      ].join(' ')}
+      style={s}
+      aria-hidden
+    />
+  );
+}
+
 function uniqByValue(items: {value:string; label:string; order?:number}[]) {
   const seen = new Set<string>();
   const out: typeof items = [];
@@ -557,7 +573,12 @@ export function BudgetFormPageInner() {
   const [catalog, setCatalog] = React.useState<Catalog | null>(null);
   const [rule, setRule] = React.useState<ModelRuleDTO | null>(null);
   const [uploading, setUploading] = React.useState(false);
-type RHFResolver = Resolver<FormValues, any, FormValues>;
+  const [submitting, setSubmitting] = React.useState(false);
+  const [locked, setLocked] = React.useState(false); // hard lock until we leave the page
+  const idempKeyRef = React.useRef(
+    (globalThis as any).crypto?.randomUUID?.() ?? String(Date.now())
+  );
+  type RHFResolver = Resolver<FormValues, any, FormValues>;
   const form = useForm<FormValues>({
       resolver: zodResolver(PublicBudgetSchema) as RHFResolver,
       defaultValues: {
@@ -873,28 +894,52 @@ React.useEffect(() => {
   }
 
   const onSubmit: SubmitHandler<FormValues> = async (values) => {
-    const toMm = (cm?: number) => (cm == null ? undefined : Math.round(cm * 10));
+    // If we are already submitting or locked, ignore any further submits.
+    if (submitting || locked) return;
 
+    setSubmitting(true);
+
+    // helper to convert cm to mm
+    const toMm = (cm?: number) => (cm == null ? undefined : Math.round(cm * 10));
     const payload = {
       ...values,
-      // convert cm → mm right before sending
       widthMm:  toMm(values.widthMm),
       heightMm: toMm(values.heightMm),
       depthMm:  toMm(values.depthMm),
     };
 
-    const res = await fetch('/api/budgets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert(err?.error ?? 'Erro ao submeter orçamento');
-      return;
+    try {
+      const res = await fetch('/api/budgets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // same key for the whole page lifetime
+          'X-Idempotency-Key': idempKeyRef.current,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || 'Erro ao submeter orçamento');
+      }
+
+      const { id } = await res.json();
+
+      // 🔒 lock permanently until navigation (prevents any flicker re-enable)
+      setLocked(true);
+
+      // navigate and bail out without resetting submitting
+      router.replace(`/orcamentos/sucesso?id=${encodeURIComponent(id)}`);
+      return; // IMPORTANT: do not fall through
+    } catch (e: any) {
+      alert(e?.message || 'Não foi possível submeter o orçamento. Tente novamente.');
+      // only unlock on error so user can try again
+      setSubmitting(false);
+      setLocked(false);
     }
-    const { id } = await res.json();
-    router.push(`/orcamentos/sucesso?id=${encodeURIComponent(id)}`);
+    // ❌ DO NOT setSubmitting(false) here on success;
+    // the page will unmount after router.replace()
   };
 
 
@@ -1161,8 +1206,11 @@ React.useEffect(() => {
         </h1>
       </div>
 
-      <div className="px-6 py-6 space-y-8">
-        {/* 2-column: Dados do Cliente + Modelo & Opções */}
+        <form
+          className="px-6 py-6 space-y-8"
+          onSubmit={form.handleSubmit(onSubmit)}
+          noValidate
+        >        {/* 2-column: Dados do Cliente + Modelo & Opções */}
         <div className="grid gap-6 md:grid-cols-2">
           {/* Dados do Cliente */}
           <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -1517,15 +1565,24 @@ React.useEffect(() => {
         <div className="pt-2">
           <button
             type="submit"
-            onClick={form.handleSubmit(onSubmit)}
-            className="h-11 rounded-xl bg-black px-6 text-[15px] font-semibold text-white hover:bg-black/90
-                       focus:outline-none focus:ring-2 focus:ring-yellow-400/50
-                       shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]"
+            disabled={submitting || locked}
+            aria-busy={submitting || locked}
+            className={[
+              "h-11 rounded-xl px-6 text-[15px] font-semibold text-white",
+              "bg-black hover:bg-black/90 focus:outline-none focus:ring-2 focus:ring-yellow-400/50",
+              "shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]",
+              (submitting || locked) ? "opacity-70 cursor-not-allowed" : ""
+            ].join(" ")}
           >
-            Enviar Orçamento
+            {(submitting || locked) ? (
+              <span className="inline-flex items-center">
+                <span className="inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]" style={{width:16,height:16,borderWidth:2}} aria-hidden />
+                <span className="ml-2">A enviar…</span>
+              </span>
+            ) : 'Enviar Orçamento'}
           </button>
         </div>
-      </div>
+      </form>
     </section>
   </main>
 );

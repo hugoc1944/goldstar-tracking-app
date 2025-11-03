@@ -4,7 +4,6 @@ import { render } from '@react-email/render';
 import { OrderCreatedEmail } from '@/emails/OrderCreated';
 import { VisitAwaitingEmail } from '@/emails/VisitAwaiting';
 import React from 'react';
-
 export const runtime = 'nodejs';
 type Params = { params: Promise<{ publicToken: string }> };
 

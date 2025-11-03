@@ -3,6 +3,21 @@
 import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
 
+/* Goldstar mini spinner (reuse) */
+function GsSpinner({ size = 16, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
+  const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
+  return (
+    <span
+      className={[
+        "inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]",
+        className,
+      ].join(' ')}
+      style={s}
+      aria-hidden
+    />
+  );
+}
+
 /* ---------- Types coming from /api/pedido/[publicToken]/status ---------- */
 type Step = 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE';
 
@@ -240,6 +255,11 @@ export default function PublicOrderPage({
   const [success, setSuccess] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
 
+  const [confirming, setConfirming] = useState(false);
+  const confirmKeyRef = useState(
+    () => (globalThis as any).crypto?.randomUUID?.() ?? String(Date.now())
+  )[0]; // idempotency per page-load
+
   // optional: clear timers if you leave the page
   useEffect(() => {
     let t: any;
@@ -316,14 +336,22 @@ export default function PublicOrderPage({
 }
 
   async function confirmOrder() {
+    if (confirming || !data?.requiresConfirmation) return;  // hard block
+    setConfirming(true);
     try {
-      const r = await fetch(`/api/pedido/${publicToken}/confirm`, { method: 'POST' });
+      const r = await fetch(`/api/pedido/${publicToken}/confirm`, {
+        method: 'POST',
+        headers: { 'X-Idempotency-Key': confirmKeyRef },
+      });
       if (!r.ok) throw new Error('Falha ao confirmar');
-      // refetch status
+
+      // Refetch status so the UI leaves the confirmation state
       const rr = await fetch(`/api/pedido/${publicToken}/status`, { cache: 'no-store' });
-      setData(await rr.json());
+      if (rr.ok) setData(await rr.json());
     } catch {
       alert('Não foi possível confirmar. Tente novamente.');
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -443,11 +471,16 @@ export default function PublicOrderPage({
               )}
               <button
                 onClick={confirmOrder}
-                className="h-11 rounded-xl bg-black px-6 text-[15px] font-semibold text-white hover:bg-black/90
-                        focus:outline-none focus:ring-2 focus:ring-yellow-400/50
-                        shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]"
+                disabled={confirming}
+                aria-busy={confirming}
+                className={[
+                  "h-11 rounded-xl px-6 text-[15px] font-semibold text-white",
+                  "bg-black hover:bg-black/90 focus:outline-none focus:ring-2 focus:ring-yellow-400/50",
+                  "shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]",
+                  confirming ? "opacity-70 cursor-not-allowed" : ""
+                ].join(" ")}
               >
-                Confirmo o Orçamento
+                {confirming ? (<span className="inline-flex items-center"><GsSpinner /><span className="ml-2">A confirmar…</span></span>) : 'Confirmo o Orçamento'}
               </button>
             </div>
           </div>
