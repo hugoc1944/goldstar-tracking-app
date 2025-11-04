@@ -169,6 +169,16 @@ function towelColorIconSrc(mode: 'padrao'|'acabamento', currentFinish?: string) 
   if (mode === 'acabamento' && currentFinish) return finishIconSrc(currentFinish);
   return '';
 }
+function shelfColorIconSrc(mode: 'padrao'|'acabamento', currentFinish?: string) {
+  // "Padrão" → use a neutral metal preview (Cromado)
+  if (mode === 'padrao') return finishIconSrc('Cromado');
+
+  // "Cor do Acabamento" → mirror whatever is selected in the Acabamento field
+  if (mode === 'acabamento' && currentFinish) return finishIconSrc(currentFinish);
+
+  // fallback if no acabamento picked yet
+  return '';
+}
 // --- classificação & ordenação de Serigrafias ---
 function startsWithToken(s: string, token: string) {
   return s.replace(/^[\s_-]+|[\s_-]+$/g,'').toLowerCase().startsWith(token.toLowerCase());
@@ -254,10 +264,82 @@ function visionBarIconSrc(value: string) {
   return `${PRE}/finishes/${toPascalNoSep(value)}.png`;
 }
 function TinyIcon({ src, alt, size = 20 }: { src?: string; alt: string; size?: number }) {
-  const [useJpg, setUseJpg] = React.useState(false);
-  if (!src) return <span className="inline-block rounded-[6px] bg-neutral-200/70" style={{ width: size, height: size }} aria-hidden />;
-  const base = src.replace(/\.(png|jpg)$/i, '');
-  const url = `${base}.${useJpg ? 'jpg' : 'png'}`;
+  // When we can't build a URL, show the gray placeholder
+  if (!src) {
+    return (
+      <span
+        className="inline-block rounded-[6px] bg-neutral-200/70"
+        style={{ width: size, height: size }}
+        aria-hidden
+      />
+    );
+  }
+
+  // --- helpers ---------------------------------------------------------
+  const stripExt = (s: string) => s.replace(/\.(png|jpg|jpeg|webp|gif)$/i, '');
+  const splitDir = (s: string) => {
+    const q = s.indexOf('?');
+    const clean = q >= 0 ? s.slice(0, q) : s;
+    const i = clean.lastIndexOf('/');
+    return {
+      dir: i >= 0 ? clean.slice(0, i + 1) : '',
+      file: i >= 0 ? clean.slice(i + 1) : clean,
+      query: q >= 0 ? s.slice(q) : '',
+    };
+  };
+  const pascal = (s: string) =>
+    s
+      .replace(/[\s_-]+/g, ' ')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .split(' ')
+      .filter(Boolean)
+      .map(t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase())
+      .join('');
+
+  // Build a candidate list with different casings & extensions
+  const candidates = React.useMemo(() => {
+    const { dir, file, query } = splitDir(src);
+    const base = stripExt(file); // filename without extension
+    const exts = ['png', 'jpg']; // keep tight to avoid long loops
+
+    // Some specific helpful shapes:
+    // - as-is
+    // - lowercased
+    // - PascalCase (e.g., "VisioSun" → "Visiosun")
+    // - SER ids also in lowercase (SER001 → ser001)
+    const shapes = [base, base.toLowerCase(), pascal(base)];
+    if (/^ser\d+$/i.test(base.replace(/[^a-z0-9]/gi, ''))) {
+      shapes.push(base.toLowerCase());
+    }
+
+    // De-duplicate while preserving order
+    const seen = new Set<string>();
+    const uniq = (arr: string[]) => arr.filter(v => (seen.has(v) ? false : (seen.add(v), true)));
+
+    const out: string[] = [];
+    for (const shape of uniq(shapes)) {
+      for (const ext of exts) {
+        out.push(`${dir}${shape}.${ext}${query}`);
+      }
+    }
+    return uniq(out);
+  }, [src]);
+
+  const [idx, setIdx] = React.useState(0);
+
+  // If we exhausted all candidates, render placeholder
+  if (idx >= candidates.length) {
+    return (
+      <span
+        className="inline-block rounded-[6px] bg-neutral-200/70"
+        style={{ width: size, height: size }}
+        aria-hidden
+      />
+    );
+  }
+
+  const url = candidates[idx];
+
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -265,7 +347,7 @@ function TinyIcon({ src, alt, size = 20 }: { src?: string; alt: string; size?: n
       alt={alt}
       style={{ width: size, height: size }}
       className="object-contain rounded-[6px] bg-white"
-      onError={() => setUseJpg(true)}
+      onError={() => setIdx(i => i + 1)} // try next variant on 404
     />
   );
 }
@@ -702,7 +784,33 @@ React.useEffect(() => {
     setIf('handleKey',     matchOption(handleAll,      search.get('handle')));
 
     // Vision extras
-    setIf('barColor',      matchOption(barColorsAll,   search.get('barColor')));
+    const rawBar = (search.get('barColor') ?? '').toLowerCase();
+      if (rawBar) {
+        // Friendly aliases → try canonical + localized variants.
+        const aliases: Record<string, string[]> = {
+          white: ['white', 'branco'],
+          black: ['black', 'preto'],
+          glass: ['glass', 'vidro', 'transparente'],
+        };
+
+        let matched = matchOption(barColorsAll, rawBar);
+
+        if (!matched) {
+          for (const [canon, list] of Object.entries(aliases)) {
+            if (list.includes(rawBar)) {
+              matched =
+                matchOption(barColorsAll, canon) ||
+                list
+                  .filter(a => a !== rawBar)
+                  .map(a => matchOption(barColorsAll, a))
+                  .find(Boolean);
+              if (matched) break;
+            }
+          }
+        }
+
+        if (matched) form.setValue('barColor', matched, { shouldDirty: false });
+      }
     setIf('visionSupport', matchOption(finishesByRule, search.get('visionSupport')));
 
     // Acrylic and Serigrafia (optional)
@@ -710,20 +818,23 @@ React.useEffect(() => {
     setIf('serigrafiaKey', matchOption(serigrafiasAll, search.get('serigrafia')));
 
     // Serigrafia color mode (enum)
-    const serCor = search.get('serCor');
-    if (serCor === 'padrao' || serCor === 'acabamento') {
-      form.setValue('serigrafiaColor', serCor, { shouldDirty: false });
+    const raw = (search.get('serCor') ?? search.get('serigrafiaColor') ?? search.get('serColor'))?.toLowerCase();
+
+  if (!raw) {
+    // nothing given
+  } else if (raw === 'padrao') {
+    form.setValue('serigrafiaColor', 'padrao' as any, { shouldDirty: false });
+  } else {
+    // Treat anything else as a finish. Exclude Cromado/Anodizado.
+    const finForSer = finishesByRule.filter(f => {
+      const v = f.value.toLowerCase();
+      return v !== 'anodizado' && v !== 'cromado';
+    });
+    const match = matchOption(finForSer, raw);
+    if (match) {
+      form.setValue('serigrafiaColor', match, { shouldDirty: false });
     }
-    const serColorParam = search.get('serColor') ?? search.get('serigrafiaColor');
-    if (serColorParam) {
-      // same filtering: exclude Anodizado/Cromado
-      const finForSer = finishesByRule.filter(f => {
-        const v = f.value.toLowerCase();
-        return v !== 'anodizado' && v !== 'cromado';
-      });
-      const match = matchOption(finForSer, serColorParam);
-      if (match) form.setValue('serigrafiaColor', match, { shouldDirty: false });
-    }
+  }
     // Towel/shelf color modes (enums), accept ?towel=padrao&... or ?towelColor=...
     const towel = (search.get('towel') ?? search.get('towelColor'))?.toLowerCase();
     if (towel === 'padrao' || towel === 'acabamento') {
@@ -968,7 +1079,13 @@ React.useEffect(() => {
     const selSer = form.watch('serigrafiaKey');
     React.useEffect(() => {
       if (!selSer || selSer === 'nenhum') {
-        form.setValue('serigrafiaColor', undefined, { shouldDirty:true });
+        // no serigrafia selected → clear any previous color
+        form.setValue('serigrafiaColor', undefined, { shouldDirty: true });
+      } else {
+        // any serigrafia selected → default color to "padrao" if empty
+        if (!form.getValues('serigrafiaColor')) {
+          form.setValue('serigrafiaColor', 'padrao', { shouldDirty: true });
+        }
       }
     }, [selSer]);
 
@@ -1021,15 +1138,16 @@ const handleAcrylicChange = (nextVal: string | undefined) => {
     }
   }
 };
-
 function isAbrirModel(key?: string) {
   if (!key) return false;
   const k = key.toLowerCase();
   return (
-    k.includes('sterling') ||
-    k.includes('diplomata_gold') ||
-    k.includes('diplomata-pivotante') || k.includes('diplomata_pivotante') ||
-    /painel[_-]?v(2|3|4)/.test(k)
+    k.includes('sterling')
+    || k.includes('diplomatagold')        // ← add this
+    || k.includes('diplomata_gold')       // keep this
+    || k.includes('diplomata-pivotante')
+    || k.includes('diplomata_pivotante')
+    || /painel[_-]?v(2|3|4)/.test(k)
   );
 }
 function isStrongOrPainelModel(key?: string) {
@@ -1144,6 +1262,22 @@ const towelColorOptions = React.useMemo(
   ],
   []
 );
+
+const serigrafiaColorChoices = React.useMemo(() => {
+  // first pseudo-option "Padrão", then the allowed finishes (without cromado/anodizado)
+  return [{ value: 'padrao', label: 'Padrão' } as IconOption]
+    .concat((finishesNoChromeAnod as unknown as IconOption[]) ?? []);
+}, [finishesNoChromeAnod]);
+
+const getSerigrafiaColorIcon = (opt: IconOption) => {
+  if (opt.value === 'padrao') {
+    // shows Fosco icon (your helper already does this)
+    return serigrafiaColorIconSrc('padrao', selectedFinish);
+  }
+  // real finishes → reuse finish previews
+  return finishIconSrc(opt.value);
+};
+
 const fileInputRef = React.useRef<HTMLInputElement>(null);
 
 React.useEffect(() => {
@@ -1420,15 +1554,28 @@ React.useEffect(() => {
               )}
 
               {comp === 'prateleira' && (
-                <Select
-                  f={form}
-                  name="shelfColorMode"
+                <FieldWrap
                   label="Cor do suporte *"
-                  options={[
-                    { value: 'padrao',     label: 'Padrão' },
-                    { value: 'acabamento', label: 'Cor do Acabamento' },
-                  ]}
-                />
+                  error={form.formState.errors?.['shelfColorMode']?.message as string | undefined}
+                >
+                  <Controller
+                    name="shelfColorMode"
+                    control={form.control}
+                    render={({ field }) => (
+                      <IconSelect
+                        value={(field.value ?? '') as string}
+                        onChange={(v) => field.onChange(v || undefined)}
+                        options={towelColorOptions} // [{padrao},{acabamento}] we already have
+                        getIcon={(opt) =>
+                          shelfColorIconSrc(opt.value as 'padrao' | 'acabamento', selectedFinish)
+                        }
+                        iconSize={36}
+                        itemIconSize={48}
+                        placeholder="—"
+                      />
+                    )}
+                  />
+                </FieldWrap>
               )}
 
               <FieldWrap label="Serigrafia" error={form.formState.errors?.['serigrafiaKey']?.message as string | undefined}>
@@ -1456,11 +1603,11 @@ React.useEffect(() => {
                     <IconSelect
                       value={(field.value ?? '') as string}
                       onChange={(v) => field.onChange(v || undefined)}
-                      options={finishesNoChromeAnod as any}
-                      getIcon={(opt) => finishIconSrc(opt.value)}
+                      options={serigrafiaColorChoices}            // ⬅️ was finishesNoChromeAnod
+                      getIcon={getSerigrafiaColorIcon}            // ⬅️ was finishIconSrc(opt.value)
                       iconSize={36}
                       itemIconSize={48}
-                      placeholder="Selecionar"
+                      placeholder="-"                              // ⬅️ optional; value shows "Padrão" anyway
                     />
                   )}
                 />
