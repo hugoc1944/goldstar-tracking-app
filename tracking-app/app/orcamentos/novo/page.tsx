@@ -69,7 +69,50 @@ function matchOption(
   found = options.find(o => canon(o.label) === r);
   return found?.value;
 }
+function resolveVisionBarColor(
+  raw: string | null | undefined,
+  opts: { value: string; label: string }[]
+): string | undefined {
+  if (!raw) return undefined;
+  const r = raw.toLowerCase();
+  const vals = new Set((opts ?? []).map(o => o.value.toLowerCase()));
 
+  // Prefer the catalog’s own vocabulary (pt or en), but accept aliases.
+  const aliases: Record<string, string[]> = {
+    preto: ['preto', 'black', 'preto_mate', 'pretofosco'],
+    branco: ['branco', 'white', 'branco_mate'],
+    vidro: ['vidro', 'glass', 'transparente'],
+    black: ['black', 'preto', 'preto_mate', 'pretofosco'],
+    white: ['white', 'branco', 'branco_mate'],
+    glass: ['glass', 'vidro', 'transparente'],
+  };
+
+  // Build candidate list starting with the raw value + its alias in the catalog’s set
+  const candidates = [r];
+  if (r in aliases) {
+    // push whichever alias actually exists in the catalog
+    for (const a of aliases[r]) {
+      if (vals.has(a)) { candidates.push(a); break; }
+    }
+  } else {
+    // raw might be 'transparente' etc.
+    for (const [canon, list] of Object.entries(aliases)) {
+      if (list.includes(r)) {
+        for (const a of list) {
+          if (vals.has(a)) { candidates.push(a); break; }
+        }
+        break;
+      }
+    }
+  }
+
+  // Try candidates by value or label (matchOption does both)
+  for (const c of candidates) {
+    const m = matchOption(opts, c);
+    if (m) return m;
+  }
+  return undefined;
+}
 // ==== ICON PATH HELPERS (seguem a lógica do simulador) ====
 
 // normaliza "sterling_v1" -> "Sterling_V1" (mesma ideia do simModelParam)
@@ -668,7 +711,7 @@ export function BudgetFormPageInner() {
       nif: '', address: '', postalCode: '', city: '',
       modelKey: search.get('model') ?? '',
       handleKey: search.get('handle') ?? undefined,
-      finishKey: search.get('finish') ?? '',
+      finishKey: '',
       barColor: search.get('barColor') ?? undefined,
       glassTypeKey: search.get('glass') ?? '',
       acrylicKey: search.get('acrylic') ?? 'nenhum',
@@ -784,33 +827,60 @@ React.useEffect(() => {
     setIf('handleKey',     matchOption(handleAll,      search.get('handle')));
 
     // Vision extras
-    const rawBar = (search.get('barColor') ?? '').toLowerCase();
-      if (rawBar) {
-        // Friendly aliases → try canonical + localized variants.
-        const aliases: Record<string, string[]> = {
-          white: ['white', 'branco'],
-          black: ['black', 'preto'],
-          glass: ['glass', 'vidro', 'transparente'],
-        };
+  const barRaw = search.get('barColor') ?? search.get('visionBar') ?? search.get('bar');
+  const barMatched = resolveVisionBarColor(barRaw, barColorsAll);
+  if (barMatched) {
+    form.setValue('barColor', barMatched, { shouldDirty: false });
+  }
+    // --- FINISH (Acabamento) -----------------------------------------------
+const rawFinish = search.get('finish');
+let matchedFinish =
+  matchOption(finishesByRule, rawFinish) ||
+  matchOption(finishesByRule, rawFinish?.replace(/_/g, '')) || // 'creme_claro' → 'cremeclaro'
+  matchOption(finishesByRule, search.get('visionSupport'));    // last-resort: mirror visionSupport
 
-        let matched = matchOption(barColorsAll, rawBar);
+if (!matchedFinish && finishesByRule.length) {
+  matchedFinish = finishesByRule[0].value; // absolute last fallback
+}
+if (matchedFinish) {
+  form.setValue('finishKey', matchedFinish, { shouldDirty: false });
+}
 
-        if (!matched) {
-          for (const [canon, list] of Object.entries(aliases)) {
-            if (list.includes(rawBar)) {
-              matched =
-                matchOption(barColorsAll, canon) ||
-                list
-                  .filter(a => a !== rawBar)
-                  .map(a => matchOption(barColorsAll, a))
-                  .find(Boolean);
-              if (matched) break;
-            }
-          }
-        }
+// --- FIXING BAR (Barra de fixação): accept multiple aliases -------------
+const fbRaw =
+  (search.get('fixingBarMode') ??
+   search.get('fixBar') ??
+   search.get('fixingBar') ??
+   search.get('fix'))?.toLowerCase();
 
-        if (matched) form.setValue('barColor', matched, { shouldDirty: false });
-      }
+let fbMode: 'padrao' | 'acabamento' | undefined;
+if (fbRaw === 'padrao' || fbRaw === 'acabamento') fbMode = fbRaw;
+else if (fbRaw === 'default') fbMode = 'padrao';
+else if (fbRaw === 'finish')  fbMode = 'acabamento';
+
+// If model supports fixing bar: default to something sensible if missing
+if (rule.hasFixingBar) {
+  form.setValue('fixingBarMode', fbMode ?? 'padrao', { shouldDirty: false });
+}
+
+// --- SERIGRAFIA COLOR (independent finish name) -------------------------
+const rawSer =
+  (search.get('serCor') ??
+   search.get('serigrafiaColor') ??
+   search.get('serColor'))?.toLowerCase();
+
+if (rawSer) {
+  if (rawSer === 'padrao') {
+    form.setValue('serigrafiaColor', 'padrao' as any, { shouldDirty: false });
+  } else {
+    const serMatch =
+      matchOption(finishesNoChromeAnod as any, rawSer) ||
+      matchOption(finishesNoChromeAnod as any, rawSer.replace(/_/g, ''));
+    if (serMatch) {
+      form.setValue('serigrafiaColor', serMatch, { shouldDirty: false });
+    }
+  }
+}
     setIf('visionSupport', matchOption(finishesByRule, search.get('visionSupport')));
 
     // Acrylic and Serigrafia (optional)
