@@ -109,6 +109,9 @@
         },
         {
           "name": "Strong_V4"
+        },
+        {
+          "name": "Strong_V5"
         }
       ],
       "comingSoonImage": "",
@@ -126,7 +129,11 @@
       "variants": [
         {
           "name": "PainelFixo_V1",
-          "label": ""
+          "label": "Painel Fixo"
+        },
+        {
+          "name": "PainelFixo_V2",
+          "label": "Painel Fixo com Moldura"
         }
       ],
       "comingSoonImage": "",
@@ -150,6 +157,13 @@
             "hideHandles": true
           },
           "label": "Painel GOLDSTAR"
+        },
+        {
+          "name": "Painel_V5",
+          "rules": {
+            "hideHandles": true
+          },
+          "label": "Painel GOLDSTAR Reto"
         }
       ],
       "comingSoonImage": "",
@@ -385,7 +399,13 @@
           "name": "FoleAP_V1",
           "comingSoon": true,
           "comingSoonImage": "/coming-soon/FoleAP/V1.jpg",
-          "label": ""
+          "label": "Fole AP"
+        },
+        {
+          "name": "FoleAP_V2",
+          "comingSoon": true,
+          "comingSoonImage": "/coming-soon/FoleAP/V2.jpg",
+          "label": "Fole AP Frontal"
         }
       ],
       "rules": {

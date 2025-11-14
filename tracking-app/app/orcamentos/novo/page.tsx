@@ -126,29 +126,51 @@ function modelKeyToVariantStem(key: string) {
 }
 // Converte "diplomata pivotante v1", "diplomata_pivotante_v1",
 // "DiplomataPivotante_v1" → "DiplomataPivotante_V1"
-function modelStemFromAny(input: string) {
-  // normaliza separadores: espaços/hífens -> "_"
-  const s = input.replace(/-/g, '_').replace(/\s+/g, '_').trim();
+// Map single-token bases to canonical PascalCase
+const MODEL_CANON: Record<string, string> = {
+  sterling: 'Sterling',
+  diplomatagold: 'DiplomataGold',
+  diplomatapivotante: 'DiplomataPivotante',
+  europa: 'Europa',
+  strong: 'Strong',
+  painel: 'Painel',
+  painelfixo: 'PainelFixo',
+  algarve: 'Algarve',
+  meioalgarve: 'MeioAlgarve',
+  meialua: 'MeiaLua',
+  lasvegas: 'LasVegas',
+  florida: 'Florida',
+  splash: 'Splash',
+  turbo: 'Turbo',
+  fole: 'Fole',
+  foleap: 'FoleAP',
+};
 
-  // detecta versão vN no final (com ou sem "_")
+function capToken(tok: string) {
+  // "4portas" -> "4Portas"; "meialua" -> "Meialua" (later we fix via MODEL_CANON)
+  return tok.replace(/^(\d*)([a-zA-Z])(.*)$/, (_m, d, c, rest) => `${d}${c.toUpperCase()}${rest.toLowerCase()}`);
+}
+
+/** Accepts "diplomatagold_v3", "Diplomata Gold V3", "fole_ap_v2", "FoleAP_V2" → "DiplomataGold_V3", etc. */
+function modelStemFromAny(input: string) {
+  const s = input.replace(/-/g, '_').replace(/\s+/g, '_').trim();
   const m = s.match(/^(.*?)(?:_)?v(\d+)$/i);
-  let base = m ? m[1] : s;
+  let base = (m ? m[1] : s).replace(/_/g, '');
   const v = m ? m[2] : undefined;
 
-  // se tiver "_" fazemos PascalCase por tokens; caso contrário, preservamos CamelCase existente
-  if (base.includes('_')) {
-    base = base
-      .split('_')
-      .filter(Boolean)
-      .map(tok => tok ? tok[0].toUpperCase() + tok.slice(1).toLowerCase() : tok)
-      .join('');
-  } else {
-    // já pode vir em CamelCase; garantimos 1ª letra maiúscula
-    base = base ? base[0].toUpperCase() + base.slice(1) : base;
-  }
+  const lower = base.toLowerCase();
+  // If we know the canonical CamelCase, use it; else generic Pascalize by chunks (digits respected)
+  const canonical = MODEL_CANON[lower] ?? base
+    .split(/(?=[A-Z])/)              // keep existing CamelCase chunks
+    .join('')
+    .split(/(\d+|[a-zA-Z]+)/g)       // split alnums to handle numbers
+    .filter(Boolean)
+    .map(capToken)
+    .join('');
 
-  return v ? `${base}_V${v}` : base;
+  return v ? `${canonical}_V${v}` : canonical;
 }
+
 
 const PRE = '/previews';
 
@@ -341,32 +363,35 @@ function TinyIcon({ src, alt, size = 20 }: { src?: string; alt: string; size?: n
 
   // Build a candidate list with different casings & extensions
   const candidates = React.useMemo(() => {
-    const { dir, file, query } = splitDir(src);
-    const base = stripExt(file); // filename without extension
-    const exts = ['png', 'jpg']; // keep tight to avoid long loops
+  const { dir, file, query } = splitDir(src);
+  const base = stripExt(file); // e.g., "DiplomataGold_V3"
+  const exts = ['png', 'jpg'];
 
-    // Some specific helpful shapes:
-    // - as-is
-    // - lowercased
-    // - PascalCase (e.g., "VisioSun" → "Visiosun")
-    // - SER ids also in lowercase (SER001 → ser001)
-    const shapes = [base, base.toLowerCase(), pascal(base)];
-    if (/^ser\d+$/i.test(base.replace(/[^a-z0-9]/gi, ''))) {
-      shapes.push(base.toLowerCase());
+  // Build stem variants:
+  // - as-is: "DiplomataGold_V3"
+  // - join V: "DiplomataGoldV3"
+  // - lowercase both: "diplomatagold_v3", "diplomatagoldv3"
+  // - no underscores at all (paranoid)
+  const noUnderscoreV = base.replace(/_V(\d+)$/, 'V$1');
+  const lower = base.toLowerCase();
+  const lowerNoUnderscoreV = lower.replace(/_v(\d+)$/, 'v$1');
+  const joined = base.replace(/_/g, '');
+  const lowerJoined = lower.replace(/_/g, '');
+
+  const shapes = [base, noUnderscoreV, lower, lowerNoUnderscoreV, joined, lowerJoined];
+
+  // De-dup while preserving order and build extension candidates
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const shape of shapes) {
+    if (seen.has(shape)) continue;
+    seen.add(shape);
+    for (const ext of exts) {
+      out.push(`${dir}${shape}.${ext}${query}`);
     }
-
-    // De-duplicate while preserving order
-    const seen = new Set<string>();
-    const uniq = (arr: string[]) => arr.filter(v => (seen.has(v) ? false : (seen.add(v), true)));
-
-    const out: string[] = [];
-    for (const shape of uniq(shapes)) {
-      for (const ext of exts) {
-        out.push(`${dir}${shape}.${ext}${query}`);
-      }
-    }
-    return uniq(out);
-  }, [src]);
+  }
+  return out;
+}, [src]);
 
   const [idx, setIdx] = React.useState(0);
 
