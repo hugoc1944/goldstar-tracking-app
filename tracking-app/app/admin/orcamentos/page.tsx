@@ -24,11 +24,23 @@ async function fetchBudgets({ q, includeDeleted }: { q?: string; includeDeleted?
 
 export default async function AdminBudgetsPage({
   searchParams,
-}: { searchParams?: { q?: string; deleted?: string } }) {
+}: {
+  // accept either a plain object or a Promise (newer Next)
+  searchParams?: Promise<Record<string, string | string[] | undefined>> |
+                 Record<string, string | string[] | undefined>;
+}) {
   await requireAdminSession();
 
-  const q = searchParams?.q?.trim();
-  const includeDeleted = searchParams?.deleted === '1';
+  const sp =
+    typeof (searchParams as any)?.then === 'function'
+      ? await (searchParams as Promise<Record<string, string | string[] | undefined>>)
+      : ((searchParams as Record<string, string | string[] | undefined>) ?? {});
+
+  const first = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v);
+
+  const q = first(sp.q)?.trim() || undefined;
+  const includeDeleted = first(sp.deleted) === '1';
+
   const items = await fetchBudgets({ q, includeDeleted });
 
   return (

@@ -147,6 +147,7 @@ model Budget {
   priceCents        Int?
   installPriceCents Int?
   notes             String?
+  launchBonus    String?   // 'shampooGOLDSTAR' | 'gelGOLDSTAR'
   quotedPdfUrl      String?
   deletedAt         DateTime?
 

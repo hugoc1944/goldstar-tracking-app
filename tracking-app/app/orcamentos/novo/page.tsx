@@ -617,6 +617,7 @@ serigrafiaColor: z.string().optional(),
   fixingBarMode: FixBarModeEnum.optional(),
 
   complemento: z.string().min(1),
+  launchBonus: z.enum(['shampooGOLDSTAR','gelGOLDSTAR']).default('shampooGOLDSTAR'),
 
   // legacy/unused in this public form, keep if you want:
   visionBar: z.string().optional(),
@@ -743,6 +744,11 @@ export function BudgetFormPageInner() {
       serigrafiaKey: search.get('serigrafia') ?? 'nenhum',
       serigrafiaColor: undefined,
       complemento: search.get('complemento') ?? 'nenhum',
+      launchBonus: ((): 'shampooGOLDSTAR' | 'gelGOLDSTAR' => {
+        const b = (search.get('bonus') ?? '').toLowerCase();
+        if (['gel','gelgoldstar','gel_de_banho','gelbanho'].includes(b)) return 'gelGOLDSTAR';
+        return 'shampooGOLDSTAR';
+      })(),
       visionSupport: undefined, visionBar: undefined,
       towelColorMode: undefined, shelfColorMode: undefined,   
       cornerChoice: undefined, cornerColorMode: undefined,
@@ -1390,38 +1396,31 @@ React.useEffect(() => {
   }
 }, [modelKey, rule]);
   return (
-  <main className="mx-auto max-w-6xl p-6 md:p-8">
-    {/* Top bar with simulator logo (left) */}
-    <div className="mb-5 flex items-center gap-4">
-      <Image
-        src="/brand/logo-trackingapp_dark.png"
-        alt="Goldstar Simulator"
-        width={220}
-        height={48}
-        priority
-        className="h-[120px] w-auto"
-      />
-      <div className="ml-auto">
-        <a
-          href={`https://simulador.mfn.pt/?model=${encodeURIComponent(simModelParam)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl bg-[#122C4F] px-3 py-2 text-white hover:bg-black/90
-                    focus:outline-none focus:ring-2 focus:ring-yellow-400/50
-                    shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]"
-        >
-          <Image
-            src="/brand/sim_icon.png"
-            alt=""
-            width={40}
-            height={40}
-            className="h-10 w-10"
-            priority
-          />
-          <span className="text-[15px] font-semibold">Ver no Simulador</span>
-        </a>
-      </div>
+  <main className="mx-auto max-w-6xl px-4 sm:px-6 md:px-8 py-5 sm:py-6 md:py-8">
+    {/* Top bar with simulator logo + responsive CTA */}
+  <div className="mb-5 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+    <Image
+      src="/brand/logo-trackingapp_dark.png"
+      alt="Goldstar Simulator"
+      width={220}
+      height={48}
+      priority
+      className="h-16 sm:h-[120px] w-auto"
+    />
+    <div className="sm:ml-auto w-full sm:w-auto">
+      <a
+        href={`https://simulador.mfn.pt/?model=${encodeURIComponent(simModelParam)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex w-full sm:w-auto justify-center items-center gap-2 rounded-xl bg-[#122C4F] px-4 py-3 text-white hover:bg-black/90
+                  focus:outline-none focus:ring-2 focus:ring-yellow-400/50
+                  shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]"
+      >
+        <Image src="/brand/sim_icon.png" alt="" width={28} height={28} className="h-7 w-7" priority />
+        <span className="text-[15px] font-semibold">Ver no Simulador</span>
+      </a>
     </div>
+  </div>
 
     {/* Card container with Goldstar glow */}
     <section
@@ -1799,6 +1798,24 @@ React.useEffect(() => {
           </div>
         </section>
 
+        <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 sm:p-5">
+          <h2 className="mb-1 text-lg font-medium text-neutral-900">Oferta de Lançamento</h2>
+          <p className="mb-3 text-sm text-neutral-600">
+            Seleccione o seu bónus de lançamento. Na compra do seu resguardo GOLDSTAR, oferecemos
+            <b> 1 produto exclusivo</b>: Shampoo nutritivo ou Gel de banho hidratante.
+          </p>
+          <Controller
+            name="launchBonus"
+            control={form.control}
+            render={({ field }) => (
+              <BonusPicker
+                value={(field.value ?? 'shampooGOLDSTAR') as 'shampooGOLDSTAR' | 'gelGOLDSTAR'}
+                onChange={field.onChange}
+              />
+            )}
+          />
+        </section>
+
         <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
           <h2 className="mb-3 text-lg font-medium text-neutral-900">Observações</h2>
           <Textarea f={form} name="notes" label="Notas adicionais" rows={4} />
@@ -1919,6 +1936,48 @@ function Thumbs({ urls }:{ urls:string[] }) {
           <img src={u} alt="" className="w-full h-full object-cover" />
         </a>
       ))}
+    </div>
+  );
+}
+
+function BonusPicker({
+  value,
+  onChange,
+}: {
+  value: 'shampooGOLDSTAR' | 'gelGOLDSTAR';
+  onChange: (v: 'shampooGOLDSTAR' | 'gelGOLDSTAR') => void;
+}) {
+  const opts = [
+    { id: 'shampooGOLDSTAR' as const, label: 'Shampoo Nutritivo GOLDSTAR', img: '/previews/bonus/shampoo.png' },
+    { id: 'gelGOLDSTAR' as const,      label: 'Gel de Banho Hidratante GOLDSTAR', img: '/previews/bonus/gel.png' },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+      {opts.map(o => {
+        const selected = value === o.id;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(o.id)}
+            className={[
+              "rounded-2xl w-full bg-white p-2 sm:p-3 border",
+              selected
+                ? "border-[#FFD200] ring-2 ring-[#FFD200]"
+                : "border-neutral-200 hover:border-neutral-300"
+            ].join(' ')}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={o.img}
+              alt={o.label}
+              className="aspect-square w-full object-contain rounded-xl bg-white"
+            />
+            <span className="mt-2 block text-center text-sm font-medium">{o.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

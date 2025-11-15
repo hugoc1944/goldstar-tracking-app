@@ -34,6 +34,10 @@ function parseEuro(s: string) {
   const n = globalThis.Number(s.replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
 }
+
+const bonusNiceLabel = (v?: string) =>
+  v === 'gelGOLDSTAR' ? 'Gel de Banho GOLDSTAR' : 'Shampoo GOLDSTAR';
+
 // Only admin: no “willSendLater” checkbox here. Width/height optional but numeric when present.
 export const AdminBudgetSchema = z.object({
   // cliente
@@ -360,13 +364,11 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
     }
 
     // --- start convert/send (prefer async) ---
-    const convRes = await fetch(`/api/budgets/${budget.id}/convert`, {
+const convRes = await fetch(`/api/budgets/${budget.id}/convert?sync=1`, {
   method: 'POST',
-  headers: {
-    'Prefer': 'respond-async',
-    'X-Idempotency-Key': idempKeyRef.current,
-  },
+  headers: { 'X-Idempotency-Key': idempKeyRef.current },
 });
+
 
   // ASYNC: server queued job (202)
   if (convRes.status === 202) {
@@ -380,9 +382,10 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
   }
 
   // SYNC: finished now (200)
-  const data = await convRes.json().catch(() => ({}));
-  if (!convRes.ok) throw new Error(data?.error ?? 'Falha ao enviar orçamento');
-
+  const data = await convRes.json().catch(() => ({} as any));
+  if (!convRes.ok || !data?.sent) {
+    throw new Error(data?.error || 'Falha no envio (convert não marcou como enviado).');
+  }
   alert('Sucesso!');           
   router.replace('/admin/orcamentos'); 
   } catch (err: any) {
@@ -522,7 +525,10 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
         <p className="text-sm text-gray-500">Sem imagens anexadas.</p>
     )}
     </section>
-
+      <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 sm:p-5">
+        <h2 className="mb-1 text-lg font-medium text-neutral-900">Bónus escolhido</h2>
+        <p className="text-sm text-neutral-800">{bonusNiceLabel(budget.launchBonus)}</p>
+      </section>
       {/* BELOW: medidas + preços + total + notas + enviar */}
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Medidas</h2>

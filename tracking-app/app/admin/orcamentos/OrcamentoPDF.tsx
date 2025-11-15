@@ -1,5 +1,5 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image, Link } from '@react-pdf/renderer';
 
 const brandGold = '#FCCC1A';
 
@@ -32,7 +32,40 @@ function humanComplemento(v?: string | null) {
   const k = String(v).toLowerCase();
   return map[k] ?? titleCase(k);
 }
+// --- Deep-link for the simulator (locked viewer)
+function buildSimUrlFromBudget(b: any) {
+  const base =
+    process.env.NEXT_PUBLIC_SIM_ORIGIN?.replace(/\/+$/, '') ||
+    'https://simulador.mfn.pt';
 
+  const q = new URLSearchParams();
+
+  // Minimum: model
+  if (b.modelKey) q.set('model', String(b.modelKey).toLowerCase());
+
+  // Core finish / handle
+  if (b.finishKey)       q.set('finish',       String(b.finishKey));
+  if (b.handleKey)       q.set('handle',       String(b.handleKey));
+
+  // Glass & serigrafia / acrylic
+  if (b.glassTypeKey)    q.set('glass',        String(b.glassTypeKey));
+  if (b.acrylicKey)      q.set('acrylic',      String(b.acrylicKey));
+  if (b.serigrafiaKey)   q.set('serigrafia',   String(b.serigrafiaKey)); // use 'nenhum' if none
+  if (b.serigrafiaColor) q.set('serCor',       String(b.serigrafiaColor)); // 'padrao' | 'acabamento'
+
+  // Complementos (Vision / Toalheiro / Prateleira)
+  if (b.complemento)     q.set('complemento',  String(b.complemento));
+  if (b.barColor)        q.set('barColor',     String(b.barColor));        // glass|white|black
+  if (b.visionSupport)   q.set('visionSupport',String(b.visionSupport));   // finish label/key
+  if (b.towelColorMode)  q.set('towel',        String(b.towelColorMode));  // 'padrao'|'acabamento'
+  if (b.shelfColorMode)  q.set('shelf',        String(b.shelfColorMode));  // 'padrao'|'acabamento'
+  if (b.fixingBarMode)   q.set('fixingBarMode',String(b.fixingBarMode));   // 'padrao'|'acabamento'
+
+  // Locked viewer UI
+  q.set('compact', '1');
+
+  return `${base}/?${q.toString()}`;
+}
 const eur = (c?: number) => (typeof c === 'number' ? (c / 100).toFixed(2) + ' €' : '—');
 const mmToCm = (mm?: number) => (typeof mm === 'number' ? `${Math.round(mm / 10)} cm` : '—');
 
@@ -56,7 +89,16 @@ const styles = StyleSheet.create({
   sectionHead: { backgroundColor: '#faf7f1', borderBottom: '1pt solid #e5e7eb', paddingVertical: 8, paddingHorizontal: 10 },
   sectionTitle: { fontSize: 12, fontWeight: 700, color: brandGold },
   sectionBody: { padding: 10 },
-
+  simBtn: {
+    fontSize: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 4,
+    backgroundColor: '#FFD200',
+    color: '#1a1a1a',
+    textDecoration: 'none',
+    fontWeight: 700,
+  },
   row: { flexDirection: 'row', marginBottom: 4 },
   label: { width: 160, color: '#555' },
   value: { flex: 1, fontWeight: 500 },
@@ -158,7 +200,15 @@ export function OrcamentoPDF({ b }: { b: any }) {
             {b.notes ? <View style={styles.row}><Text style={styles.label}>Notas</Text><Text style={styles.value}>{b.notes}</Text></View> : null}
           </View>
         </View>
-
+        {/* --- View in simulator CTA --- */}
+        <View style={{ marginTop: 8, marginBottom: 12, textAlign: 'center' }}>
+          <Link
+            src={buildSimUrlFromBudget(b)}   // ← was budget
+            style={styles.simBtn}
+          >
+            Ver no simulador
+          </Link>
+        </View>
         {/* Entrega / Instalação */}
         <View style={styles.section}>
           <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Entrega / Instalação</Text></View>

@@ -45,6 +45,7 @@ export const BudgetCreateSchema = z.object({
   fixingBarMode: FixBarModeEnum.optional(),  // only if model rule hasFixingBar
 
   complemento: z.string().min(1),            // 'nenhum' | 'vision' | 'toalheiro1' | 'prateleira'
+  launchBonus: z.enum(['shampooGOLDSTAR','gelGOLDSTAR']).default('shampooGOLDSTAR'),
 
   // legacy/extra toggles (optional)
   visionBar: z.string().optional(),
