@@ -364,30 +364,30 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
     }
 
     // --- start convert/send (prefer async) ---
-const convRes = await fetch(`/api/budgets/${budget.id}/convert?sync=1`, {
-  method: 'POST',
-  headers: { 'X-Idempotency-Key': idempKeyRef.current },
-});
+    // --- start convert/send (force SYNC + strict checks) ---
+    const convRes = await fetch(`/api/budgets/${budget.id}/convert?sync=1`, {
+      method: 'POST',
+      headers: { 'X-Idempotency-Key': idempKeyRef.current },
+    });
 
+    const data = await convRes.json().catch(() => ({} as any));
 
-  // ASYNC: server queued job (202)
-  if (convRes.status === 202) {
-    const { jobId, status } = await convRes.json().catch(() => ({}));
-    setBgJob({ id: jobId, status: status ?? 'queued' });
-    setSending(false);
+    // If server still replied async (shouldn’t after we add sync handling below)
+    if (convRes.status === 202) {
+      throw new Error('Servidor colocou envio em background; desative o modo assíncrono.');
+    }
 
-    alert('Sucesso!');               
+    if (!convRes.ok) {
+      throw new Error(data?.error || `Falha no envio (HTTP ${convRes.status})`);
+    }
+
+    // Our API returns { email: 'sent' | 'failed' | 'skipped' }
+    if (data?.email !== 'sent') {
+      throw new Error(`Email não foi enviado (estado: ${data?.email ?? 'desconhecido'})`);
+    }
+
+    alert('Sucesso!');
     router.replace('/admin/orcamentos');
-    return;
-  }
-
-  // SYNC: finished now (200)
-  const data = await convRes.json().catch(() => ({} as any));
-  if (!convRes.ok || !data?.sent) {
-    throw new Error(data?.error || 'Falha no envio (convert não marcou como enviado).');
-  }
-  alert('Sucesso!');           
-  router.replace('/admin/orcamentos'); 
   } catch (err: any) {
     alert(err?.message ?? 'Falha ao enviar orçamento');
   } finally {

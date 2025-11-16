@@ -202,9 +202,14 @@ export async function POST(req: Request, { params }: Ctx) {
   await requireAdminSession();
   const { id } = await params;
 
+  const url = new URL(req.url);
+  const forceSync = url.searchParams.get('sync') === '1';
+
   const budgetId = id;
-  const prefer = req.headers.get('prefer') || '';
-  const preferAsync = /respond-async/i.test(prefer) || req.headers.get('x-prefer-async') === '1';
+  const preferHeader = req.headers.get('prefer') || '';
+  const preferAsyncHeader = /respond-async/i.test(preferHeader) || req.headers.get('x-prefer-async') === '1';
+  // NEW: only go async when NOT forcing sync
+  const preferAsync = !forceSync && preferAsyncHeader;  
   const idem = req.headers.get('x-idempotency-key') ?? null;
 
 if (preferAsync) {
@@ -260,6 +265,19 @@ if (updates) {
 // 3) Run the same pipeline synchronously via the helper
 try {
   const result = await sendBudgetAndEmail(id);
+
+  if (result.emailStatus !== 'sent') {
+      return NextResponse.json(
+        {
+          error: `Email status: ${result.emailStatus}`,
+          pdf: result.pdfUrl,
+          id,
+        },
+        { status: 502 }
+      );
+    }
+
+
   return NextResponse.json({
     id,
     status: 'converted',
