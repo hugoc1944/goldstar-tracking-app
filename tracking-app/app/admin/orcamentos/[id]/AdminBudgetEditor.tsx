@@ -194,6 +194,31 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
   const idempKeyRef = React.useRef((globalThis as any).crypto?.randomUUID?.() ?? String(Date.now()));
 
 
+const [invoiceUploading, setInvoiceUploading] = React.useState(false);
+const [invoiceUrl, setInvoiceUrl] = React.useState<string | null>(budget.invoicePdfUrl ?? null);
+
+async function uploadInvoice(f: File) {
+  setInvoiceUploading(true);
+  try {
+    const fd = new FormData();
+    fd.append('file', f);
+    const res = await fetch(`/api/budgets/${budget.id}/invoice`, { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    setInvoiceUrl(data.invoicePdfUrl ?? null);
+  } catch (e: any) {
+    alert('Falha ao anexar fatura: ' + (e?.message ?? e));
+  } finally {
+    setInvoiceUploading(false);
+  }
+}
+async function removeInvoice() {
+  if (!confirm('Remover fatura anexada?')) return;
+  const res = await fetch(`/api/budgets/${budget.id}/invoice`, { method: 'DELETE' });
+  if (res.ok) setInvoiceUrl(null);
+  else alert('Não foi possível remover.');
+}
+
   React.useEffect(() => {
     (async () => {
       const res = await fetch('/api/catalog', { cache: 'no-store' });
@@ -623,6 +648,60 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
         <span className="block text-sm mb-1">Notas</span>
         <textarea rows={4} {...form.register('notes')} className="w-full border rounded px-3 py-2" />
     </label>
+
+    {/* Anexar Fatura */}
+    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium text-neutral-900">Anexar Fatura (PDF)</div>
+          <div className="text-xs text-neutral-600">
+            Opcional - será enviada em anexo com o orçamento.
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="inline-block">
+            <input
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.currentTarget.files?.[0];
+                if (f) uploadInvoice(f);
+                e.currentTarget.value = '';
+              }}
+              disabled={invoiceUploading}
+            />
+            <span
+              className="cursor-pointer rounded px-3 py-1.5 text-sm text-black"
+              style={{ backgroundColor: '#FFCC00', opacity: invoiceUploading ? 0.6 : 1 }}
+            >
+              {invoiceUploading ? 'A carregar…' : 'Escolher PDF'}
+            </span>
+          </label>
+
+          {invoiceUrl ? (
+            <>
+              <a
+                href={invoiceUrl}
+                target="_blank"
+                className="text-sm text-yellow-800 underline"
+              >
+                Ver fatura anexada
+              </a>
+              <button
+                type="button"
+                onClick={removeInvoice}
+                className="text-sm text-red-600 hover:underline"
+              >
+                Remover
+              </button>
+            </>
+          ) : (
+            <span className="text-sm text-neutral-500">Sem fatura anexada</span>
+          )}
+        </div>
+      </div>
+    </div>
 
     {/* Enviar Orçamento */}
     <div className="pt-2">

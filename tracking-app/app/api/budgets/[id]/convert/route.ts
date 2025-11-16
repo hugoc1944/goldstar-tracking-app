@@ -64,6 +64,19 @@ async function sendBudgetAndEmail(
     where: { id: budgetId },
     data: { quotedPdfUrl: blob.url },
   });
+  // ⬇️ NEW: build order files (photos + quote + invoice)
+type OrderFileItem = { kind: 'photo' | 'quote' | 'invoice' | 'summary'; label: string; url: string };
+
+const files: OrderFileItem[] = [];
+if (Array.isArray(saved.photoUrls)) {
+  for (const u of saved.photoUrls as string[]) {
+    if (u) files.push({ kind: 'photo', label: 'Foto', url: u });
+  }
+}
+files.push({ kind: 'quote', label: 'Orçamento', url: blob.url });        // the PDF we just generated
+if (saved.invoicePdfUrl) {
+  files.push({ kind: 'invoice', label: 'Fatura', url: saved.invoicePdfUrl });
+}
 
   // 8) Upsert Customer
   const customer = await prisma.customer.upsert({
@@ -97,8 +110,8 @@ async function sendBudgetAndEmail(
     eta: null,
     trackingNumber: null,
     publicToken,
-    filesJson: Array.isArray(saved.photoUrls) ? (saved.photoUrls as any) : undefined,
-  };
+  filesJson: files  
+};
 
   let order: { id: string; publicToken: string };
   try {
@@ -109,6 +122,7 @@ async function sendBudgetAndEmail(
         housingType:  saved.housingType  ?? null,
         floorNumber:  saved.floorNumber  ?? null,
         hasElevator:  saved.hasElevator  ?? null,
+
       } as any,
       select: { id: true, publicToken: true },
     });
@@ -120,7 +134,6 @@ async function sendBudgetAndEmail(
        msg.includes('Unknown arg `housingType`') ||
        msg.includes('Unknown arg `floorNumber`') ||
        msg.includes('Unknown arg `hasElevator`'));
-
     if (looksLikeUnknownArg) {
       order = await prisma.order.create({
         data: baseOrderData,
@@ -139,34 +152,44 @@ async function sendBudgetAndEmail(
   // 11) Email via Resend
   let emailStatus: 'sent' | 'failed' | 'skipped' = 'skipped';
   const resendKey = process.env.RESEND_API_KEY;
+
   if (resendKey) {
     const { Resend } = await import('resend');
     const { render } = await import('@react-email/render');
     const { BudgetSentEmail } = await import('@/emails/BudgetSent');
     const resend = new Resend(resendKey);
+
     const base =
       process.env.NEXT_PUBLIC_BASE_URL ||
       process.env.NEXTAUTH_URL ||
       'http://localhost:3000';
 
-    const confirmUrl = `${base}/pedido/${order.publicToken}?confirm=1`;
+    const confirmUrl   = `${base}/pedido/${order.publicToken}?confirm=1`;
     const backofficeUrl = `${base}/admin/orcamentos/${saved.id}`;
     const html = await render(
       BudgetSentEmail({
         customerName: saved.name ?? 'Cliente',
         confirmUrl,
-        pdfUrl: blob.url,
+        pdfUrl: blob.url,     // config PDF link in email body (kept)
         backofficeUrl,
       })
     );
 
     const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+
+    const attachments: { filename: string; path: string }[] = [
+      { filename: 'orcamento.pdf', path: blob.url }, // config PDF we just generated
+    ];
+    if (saved.invoicePdfUrl) {
+      attachments.push({ filename: 'fatura.pdf', path: saved.invoicePdfUrl });
+    }
+
     const result = await resend.emails.send({
       from: `GOLDSTAR <${fromAddr}>`,
       to: saved.email,
       subject: 'Orçamento GOLDSTAR',
       html,
-      attachments: [{ filename: 'orcamento.pdf', path: blob.url }],
+      attachments,
     });
 
     if (result?.error) {

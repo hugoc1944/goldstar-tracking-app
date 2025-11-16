@@ -149,6 +149,7 @@ model Budget {
   notes             String?
   launchBonus    String?   // 'shampooGOLDSTAR' | 'gelGOLDSTAR'
   quotedPdfUrl      String?
+  invoicePdfUrl    String?  @db.Text
   deletedAt         DateTime?
 
   sentAt           DateTime?          // set when email is sent

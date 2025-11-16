@@ -1,9 +1,9 @@
+// app/admin/orcamentos/OrcamentoPDF.tsx
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image, Link } from '@react-pdf/renderer';
 
 const brandGold = '#FCCC1A';
 
-// ---- helpers to humanize values ----
 const titleCase = (s: string) =>
   s.toLowerCase().replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -14,13 +14,11 @@ function humanModel(key?: string | null) {
   const base = titleCase(k.replace(/_v\d+$/, ''));
   return m ? `${base} Variação ${m[1]}` : base;
 }
-
 function humanHandle(v?: string | null) {
   if (!v) return '—';
   const m = String(v).match(/^h(\d)$/i);
-  return m ? `Handle ${m[1]}` : titleCase(String(v));
+  return m ? `Puxador ${m[1]}` : titleCase(String(v));
 }
-
 function humanComplemento(v?: string | null) {
   if (!v) return '—';
   const map: Record<string, string> = {
@@ -32,6 +30,35 @@ function humanComplemento(v?: string | null) {
   const k = String(v).toLowerCase();
   return map[k] ?? titleCase(k);
 }
+const eur = (c?: number) => (typeof c === 'number' ? (c / 100).toFixed(2) + ' €' : '—');
+const mmToCm = (mm?: number) => (typeof mm === 'number' ? `${Math.round(mm / 10)} cm` : '—');
+
+const bonusNiceLabel = (v?: string) =>
+  v === 'gelGOLDSTAR' ? 'Gel de Banho GOLDSTAR'
+  : v === 'shampooGOLDSTAR' ? 'Shampoo GOLDSTAR'
+  : '—';
+
+// Map DB/internal glass keys to the public tokens the simulator expects
+function toPublicGlass(raw?: string | null) {
+  if (!raw) return '';
+  const k = String(raw).toLowerCase().replace(/\s+/g, '');
+
+  // transparent / frosted
+  if (k === 'clear' || k === 'transparente' || k === 'transparent') return 'transparente';
+  if (k === 'frosted_matte' || k === 'fosco' || k === 'matte' || k === 'opaco') return 'fosco';
+
+  // mono / colored
+  if (k === 'mono_gris'   || k === 'mono_black' || k === 'gris'   || k === 'smoke' || k === 'cinza' || k === 'escuro') return 'gris';
+  if (k === 'mono_bronze' || k === 'bronze')      return 'bronze';
+  if (k === 'mono_green'  || k === 'green'  || k === 'verde')      return 'verde';
+  if (k === 'mono_red'    || k === 'red'    || k === 'vermelho')   return 'vermelho';
+  if (k === 'mono_visiosun' || k === 'visiosun' || k === 'uv')     return 'visiosun';
+  if (k === 'mono_flutes' || k === 'flutes' || k === 'canelado' || k === 'canalete') return 'canelado';
+
+  // fallback: pass through
+  return k;
+}
+
 // --- Deep-link for the simulator (locked viewer)
 function buildSimUrlFromBudget(b: any) {
   const base =
@@ -40,99 +67,121 @@ function buildSimUrlFromBudget(b: any) {
 
   const q = new URLSearchParams();
 
-  // Minimum: model
-  if (b.modelKey) q.set('model', String(b.modelKey).toLowerCase());
+  // Model & core look
+  if (b.modelKey)       q.set('model', String(b.modelKey));         // e.g. DiplomataGold_V3
+  if (b.finishKey)      q.set('finish', String(b.finishKey));       // e.g. Cromado / PretoMate
+  if (b.handleKey)      q.set('handle', String(b.handleKey));       // h1..h12 | sem
 
-  // Core finish / handle
-  if (b.finishKey)       q.set('finish',       String(b.finishKey));
-  if (b.handleKey)       q.set('handle',       String(b.handleKey));
+  // Glass / acrylic
+  if (b.glassTypeKey)   q.set('glass', toPublicGlass(b.glassTypeKey));
+  // clear|frosted_matte|mono_...
+  if (b.acrylicKey && b.acrylicKey !== 'nenhum') {
+    q.set('acrylic', String(b.acrylicKey));                         // e.g. poly_clear / poly_white
+  }
 
-  // Glass & serigrafia / acrylic
-  if (b.glassTypeKey)    q.set('glass',        String(b.glassTypeKey));
-  if (b.acrylicKey)      q.set('acrylic',      String(b.acrylicKey));
-  if (b.serigrafiaKey)   q.set('serigrafia',   String(b.serigrafiaKey)); // use 'nenhum' if none
-  if (b.serigrafiaColor) q.set('serCor',       String(b.serigrafiaColor)); // 'padrao' | 'acabamento'
+  // Serigrafia (pattern) + independent ink color
+  if (b.serigrafiaKey && b.serigrafiaKey !== 'nenhum') {
+    q.set('serigrafia', String(b.serigrafiaKey));                   // SER### | Quadro1.. | Elo1.. | Sereno
+    if (b.serigrafiaColor) q.set('serCor', String(b.serigrafiaColor)); // padrao | acabamento
+  }
 
-  // Complementos (Vision / Toalheiro / Prateleira)
-  if (b.complemento)     q.set('complemento',  String(b.complemento));
-  if (b.barColor)        q.set('barColor',     String(b.barColor));        // glass|white|black
-  if (b.visionSupport)   q.set('visionSupport',String(b.visionSupport));   // finish label/key
-  if (b.towelColorMode)  q.set('towel',        String(b.towelColorMode));  // 'padrao'|'acabamento'
-  if (b.shelfColorMode)  q.set('shelf',        String(b.shelfColorMode));  // 'padrao'|'acabamento'
-  if (b.fixingBarMode)   q.set('fixingBarMode',String(b.fixingBarMode));   // 'padrao'|'acabamento'
+  // Fixing bar (“barra de fixação”) — only two modes
+  if (b.fixingBarMode) {
+    // padrao | acabamento  (viewer maps → 'default' | 'finish')
+    q.set('fixingBarMode', String(b.fixingBarMode));
+  }
 
-  // Locked viewer UI
+  // Complementos
+  if (b.complemento) {
+    const comp = String(b.complemento); // vision | toalheiro1 | prateleira | nenhum
+    q.set('complemento', comp);
+
+    if (comp === 'vision') {
+      if (b.barColor)      q.set('barColor', String(b.barColor));         // glass|white|black
+      if (b.visionSupport) q.set('visionSupport', String(b.visionSupport)); // finish literal
+    } else {
+      // avoid stale params in URL
+      q.delete('barColor');
+      q.delete('visionSupport');
+    }
+
+    if (comp === 'toalheiro1') {
+      if (b.towelColorMode) q.set('towel', String(b.towelColorMode));     // padrao|acabamento
+    } else {
+      q.delete('towel');
+    }
+
+    if (comp === 'prateleira') {
+      if (b.shelfColorMode) q.set('shelf', String(b.shelfColorMode));     // padrao|acabamento
+      // corner selection (if you capture this in the budget)
+      if (b.cornerChoice) q.set('corner', String(b.cornerChoice));        // corner1|corner2|none (supports "canto1/2")
+    } else {
+      q.delete('shelf');
+      q.delete('corner');
+    }
+  }
+
+  // Optional: compact/locked chrome (the simulator can read this to hide side panels)
   q.set('compact', '1');
 
   return `${base}/?${q.toString()}`;
 }
-const eur = (c?: number) => (typeof c === 'number' ? (c / 100).toFixed(2) + ' €' : '—');
-const mmToCm = (mm?: number) => (typeof mm === 'number' ? `${Math.round(mm / 10)} cm` : '—');
 
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 11, color: '#111' },
 
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 18,
-  },
+  // Header
+  headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  logo: { height: 36, marginTop: -2 },
+  topRight: { alignItems: 'flex-end' },
+  site: { fontSize: 10, color: '#666', textDecoration: 'none' },
 
-  titleBlock: { marginTop: 2, flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  titleText: { fontSize: 18, fontWeight: 700 },
-  goldText: { color: brandGold },
-
-  contact: { fontSize: 10, color: '#444', lineHeight: 1.5, textAlign: 'right' },
+  title: { fontSize: 15, fontWeight: 700, marginBottom: 6 },
 
   section: { marginTop: 10, border: '1pt solid #e5e7eb', borderRadius: 6, overflow: 'hidden' },
-  sectionHead: { backgroundColor: '#faf7f1', borderBottom: '1pt solid #e5e7eb', paddingVertical: 8, paddingHorizontal: 10 },
-  sectionTitle: { fontSize: 12, fontWeight: 700, color: brandGold },
+  sectionHead: {
+    backgroundColor: '#fafafa',
+    borderBottom: '1pt solid #e5e7eb',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  sectionTitle: { fontSize: 12, fontWeight: 700, color: '#111' },
   sectionBody: { padding: 10 },
+
+  row: { flexDirection: 'row', marginBottom: 4 },
+  label: { width: 180, color: '#555' },
+  value: { flex: 1, fontWeight: 500 },
+
+  totals: { marginTop: 8, borderTop: '1pt solid #e5e7eb', paddingTop: 8 },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  grand: { marginTop: 8, textAlign: 'right', fontSize: 12, fontWeight: 700 },
+
+  // Button under Valores
+  simWrap: { marginTop: 8, textAlign: 'center' },
   simBtn: {
     fontSize: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 4,
-    backgroundColor: '#FFD200',
+    backgroundColor: brandGold,
     color: '#1a1a1a',
     textDecoration: 'none',
     fontWeight: 700,
   },
-  row: { flexDirection: 'row', marginBottom: 4 },
-  label: { width: 160, color: '#555' },
-  value: { flex: 1, fontWeight: 500 },
 
-  totals: { marginTop: 12, borderTop: '1pt solid #e5e7eb', paddingTop: 10 },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  totalLabel: { color: '#333' },
-  totalValue: { fontWeight: 700 },
-
-  grandTotalBar: { marginTop: 16, padding: 10, borderRadius: 6, backgroundColor: '#fff7e6', border: '1pt solid #f1d59f' },
-  grandTotalText: { fontSize: 12, fontWeight: 700, textAlign: 'right' },
-
-  // NEW: bottom-center logo
-  footer: {
-    position: 'absolute',
-    bottom: 24,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  footerLogo: { height: 56 },
+  footer: { position: 'absolute', bottom: 24, left: 32, right: 32, fontSize: 9, color: '#777', textAlign: 'center' },
 });
 
 export function OrcamentoPDF({ b }: { b: any }) {
-  // prefer a fully-qualified origin for @react-pdf image fetching
   const base =
     process.env.NEXT_PUBLIC_BASE_URL ||
     process.env.NEXTAUTH_URL ||
     'http://localhost:3000';
 
   const logoUrl = `${base}/brand/goldstar-logo_dark.png`;
+  const siteUrl = 'https://mfn.pt';
 
   const total = ((b.priceCents ?? 0) + (b.installPriceCents ?? 0)) / 100;
-
   const deliveryText =
     b.deliveryType === 'entrega_instalacao' || b.deliveryType === 'instalacao'
       ? 'Entrega + Instalação'
@@ -141,18 +190,15 @@ export function OrcamentoPDF({ b }: { b: any }) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Header (no logo here) */}
-        <View style={styles.headerRow}>
-          <View style={styles.titleBlock}>
-            <Text style={styles.titleText}>Orçamento GOLDSTAR</Text>
-          </View>
-          <View style={styles.contact}>
-            <Text>Avenida das Palmeiras LT115 R/C ESQ</Text>
-            <Text>3500-392 Viso-Sul Viseu</Text>
-            <Text>+351 232 599 209</Text>
-            <Text>geral@mfn.pt</Text>
+        {/* header */}
+        <View style={styles.headRow}>
+          <Image src={logoUrl} style={styles.logo} />
+          <View style={styles.topRight}>
+            <Link src={siteUrl} style={styles.site}>mfn.pt</Link>
           </View>
         </View>
+
+        <Text style={styles.title}>Resumo do seu Pedido</Text>
 
         {/* Cliente */}
         <View style={styles.section}>
@@ -165,9 +211,9 @@ export function OrcamentoPDF({ b }: { b: any }) {
           </View>
         </View>
 
-        {/* Produto */}
+        {/* Configuração */}
         <View style={styles.section}>
-          <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Detalhes do Produto</Text></View>
+          <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Configuração do Resguardo</Text></View>
           <View style={styles.sectionBody}>
             <View style={styles.row}><Text style={styles.label}>Modelo</Text><Text style={styles.value}>{humanModel(b.modelKey)}</Text></View>
             <View style={styles.row}><Text style={styles.label}>Puxador</Text><Text style={styles.value}>{humanHandle(b.handleKey)}</Text></View>
@@ -186,30 +232,24 @@ export function OrcamentoPDF({ b }: { b: any }) {
               </>
             )}
 
-            {b.willSendLater ? (
-              <View style={styles.row}><Text style={styles.label}>Medidas</Text><Text style={styles.value}>A indicar pelo cliente</Text></View>
-            ) : (
-              <View style={styles.row}>
-                <Text style={styles.label}>Medidas</Text>
-                <Text style={styles.value}>
-                  {mmToCm(b.widthMm)} × {mmToCm(b.heightMm)}{b.depthMm ? ` × ${mmToCm(b.depthMm)}` : ''}
-                </Text>
-              </View>
-            )}
+            <View style={styles.row}>
+              <Text style={styles.label}>Medidas</Text>
+              <Text style={styles.value}>
+                {mmToCm(b.widthMm)} × {mmToCm(b.heightMm)}{b.depthMm ? ` × ${mmToCm(b.depthMm)}` : ''}
+              </Text>
+            </View>
+
+            {/* Bonus line */}
+            <View style={styles.row}>
+              <Text style={styles.label}>Bónus escolhido</Text>
+              <Text style={styles.value}>{bonusNiceLabel(b.launchBonus)}</Text>
+            </View>
 
             {b.notes ? <View style={styles.row}><Text style={styles.label}>Notas</Text><Text style={styles.value}>{b.notes}</Text></View> : null}
           </View>
         </View>
-        {/* --- View in simulator CTA --- */}
-        <View style={{ marginTop: 8, marginBottom: 12, textAlign: 'center' }}>
-          <Link
-            src={buildSimUrlFromBudget(b)}   // ← was budget
-            style={styles.simBtn}
-          >
-            Ver no simulador
-          </Link>
-        </View>
-        {/* Entrega / Instalação */}
+
+        {/* Logística */}
         <View style={styles.section}>
           <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Entrega / Instalação</Text></View>
           <View style={styles.sectionBody}>
@@ -226,26 +266,22 @@ export function OrcamentoPDF({ b }: { b: any }) {
         <View style={styles.section}>
           <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Valores</Text></View>
           <View style={styles.sectionBody}>
-            <View style={styles.totals}>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Preço</Text>
-                <Text style={styles.totalValue}>{eur(b.priceCents)}</Text>
-              </View>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Custo Instalação</Text>
-                <Text style={styles.totalValue}>{eur(b.installPriceCents)}</Text>
-              </View>
-            </View>
-            <View style={styles.grandTotalBar}>
-              <Text style={styles.grandTotalText}>Total: {total.toFixed(2)} €</Text>
-            </View>
+            <View style={styles.totalRow}><Text>Preço</Text><Text>{eur(b.priceCents)}</Text></View>
+            <View style={styles.totalRow}><Text>Instalação</Text><Text>{eur(b.installPriceCents)}</Text></View>
+            <Text style={styles.grand}>Total: {total.toFixed(2)} €</Text>
           </View>
         </View>
 
-        {/* Bottom-center logo */}
-        <View style={styles.footer}>
-          <Image src={logoUrl} style={styles.footerLogo} />
+        {/* CTA: Ver no simulador */}
+        <View style={styles.simWrap}>
+          <Link src={buildSimUrlFromBudget(b)} style={styles.simBtn}>
+            Ver no simulador
+          </Link>
         </View>
+
+        <Text style={styles.footer}>
+          GOLDSTAR • Avenida das Palmeiras LT115, 3500-392 Viseu • +351 232 599 209 • geral@mfn.pt
+        </Text>
       </Page>
     </Document>
   );
