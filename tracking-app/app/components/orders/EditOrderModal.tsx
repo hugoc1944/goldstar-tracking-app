@@ -34,6 +34,42 @@ async function uploadFile(f: File): Promise<UploadInfo> {
   return r.json();
 }
 
+
+// Normalize model string ("diplomatagold_v1", "Diplomata Gold V1") → "DiplomataGold_V1"
+const MODEL_CANON: Record<string, string> = {
+  sterling: 'Sterling',
+  diplomatagold: 'DiplomataGold',
+  diplomatapivotante: 'DiplomataPivotante',
+  europa: 'Europa',
+  strong: 'Strong',
+  painel: 'Painel',
+  painelfixo: 'PainelFixo',
+  algarve: 'Algarve',
+  meioalgarve: 'MeioAlgarve',
+  meialua: 'MeiaLua',
+  lasvegas: 'LasVegas',
+  florida: 'Florida',
+  splash: 'Splash',
+  turbo: 'Turbo',
+  fole: 'Fole',
+  foleap: 'FoleAP',
+};
+
+function simModelParamFromKey(input: string | undefined) {
+  if (!input) return '';
+  const s = input.replace(/-/g, '_').replace(/\s+/g, '_').trim();
+  const m = s.match(/^(.*?)(?:_)?v(\d+)$/i);
+  let base = (m ? m[1] : s).replace(/_/g, '');
+  const v = m ? m[2] : undefined;
+
+  const lower = base.toLowerCase();
+  const canonical =
+    MODEL_CANON[lower] ??
+    base.charAt(0).toUpperCase() + base.slice(1).toLowerCase();
+
+  return v ? `${canonical}_V${v}` : canonical;
+}
+
 export function EditOrderModal({
   order,
   onClose,
@@ -63,6 +99,8 @@ export function EditOrderModal({
       towelColorMode?: string;
       shelfColorMode?: string;
       fixingBarMode?: string;
+      shelfHeightPct?: number | null;   
+
     };
     // optional delivery (if your loader added it)
     delivery?: {
@@ -119,6 +157,8 @@ export function EditOrderModal({
     towelColorMode: order.details.towelColorMode ?? '',
     shelfColorMode: order.details.shelfColorMode ?? '',
     fixingBarMode: order.details.fixingBarMode ?? '',
+    shelfHeightPct: order.details.shelfHeightPct ?? null,  
+
   });
 
   // NEW: delivery local state (prefill if provided)
@@ -170,6 +210,83 @@ export function EditOrderModal({
   const showFixBar   = !!rule?.hasFixingBar;
   const allowTowel1  = !!rule?.allowTowel1;
   const hideHandles  = !!rule?.hideHandles;
+
+const simModelParam = React.useMemo(
+  () => simModelParamFromKey(details.model),
+  [details.model]
+);
+
+const simulatorUrl = React.useMemo(() => {
+  if (!simModelParam) return 'https://simulador.mfn.pt/';
+
+  const params = new URLSearchParams();
+  params.set('model', simModelParam);
+
+  // Acabamento
+  if (details.finish) {
+    params.set('finish', details.finish);
+  }
+
+  // Vidro / Monocromático (fix mono_*)
+  if (details.glassTypeKey) {
+    let glassToken = details.glassTypeKey;
+    if (glassToken.startsWith('mono_')) {
+      glassToken = glassToken.replace(/^mono_/, '');
+    }
+    params.set('glass', glassToken);
+  }
+
+  // Puxador
+  if (!hideHandles && details.handleKey) {
+    params.set('handle', details.handleKey);
+  }
+
+  // Complemento
+  if (details.complements && details.complements !== 'nenhum') {
+    params.set('complemento', details.complements);
+  }
+
+  // Barra de fixação
+  if (showFixBar && details.fixingBarMode) {
+    params.set('fixingBarMode', details.fixingBarMode);
+  }
+
+  // Acrílico
+  if (details.acrylic && details.acrylic !== 'nenhum') {
+    params.set('acrylic', details.acrylic);
+  }
+
+  // Serigrafia
+  if (details.serigraphy && details.serigraphy !== 'nenhum') {
+    params.set('serigrafia', details.serigraphy);
+    if (details.serigrafiaColor) {
+      params.set('serigrafiaColor', details.serigrafiaColor);
+    }
+  }
+
+  // Vision
+  if (details.complements === 'vision') {
+    if (details.barColor) params.set('barColor', details.barColor);
+    if (details.visionSupport) params.set('visionSupport', details.visionSupport);
+  }
+
+  // Toalheiro 1
+  if (details.complements === 'toalheiro1' && details.towelColorMode) {
+    params.set('towel', details.towelColorMode);
+  }
+
+  // Prateleira de canto
+  if (details.complements === 'prateleira') {
+    if (details.shelfColorMode) {
+      params.set('shelf', details.shelfColorMode);
+    }
+    if (details.shelfHeightPct != null) {
+      params.set('altura', String(Math.round(details.shelfHeightPct)));
+    }
+  }
+
+  return `https://simulador.mfn.pt/?${params.toString()}`;
+}, [simModelParam, details, hideHandles, showFixBar]);
 
   // If model is empty once models load, select first
   React.useEffect(() => {
@@ -227,8 +344,8 @@ export function EditOrderModal({
             towelColorMode: details.complements === 'toalheiro1' ? (details.towelColorMode || null) : null,
             shelfColorMode: details.complements === 'prateleira' ? (details.shelfColorMode || null) : null,
             fixingBarMode: showFixBar ? (details.fixingBarMode || null) : null,
+              shelfHeightPct: details.shelfHeightPct ?? null,
           },
-          // NEW: delivery
           delivery: {
             deliveryType: delivery.deliveryType || null,
             housingType:  delivery.housingType  || null,
@@ -291,12 +408,33 @@ export function EditOrderModal({
       <div onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div>
-            <h3 className="text-2xl font-semibold">Alterar Pedido</h3>
-            <p className="text-sm text-muted-foreground">Edita os dados do cliente e os detalhes do produto.</p>
-          </div>
-          <button className="rounded-lg px-2 py-1 text-muted-foreground hover:bg-muted/50" onClick={onClose} aria-label="Fechar">✕</button>
-        </div>
+  <div>
+    <h3 className="text-2xl font-semibold">Alterar Pedido</h3>
+    <p className="text-sm text-muted-foreground">
+      Edita os dados do cliente e os detalhes do produto.
+    </p>
+    </div>
+
+    <div className="flex items-center gap-3">
+      {simModelParam && (
+        <a
+          href={simulatorUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          Ver no simulador
+        </a>
+      )}
+      <button
+        className="rounded-lg px-2 py-1 text-muted-foreground hover:bg-muted/50"
+        onClick={onClose}
+        aria-label="Fechar"
+      >
+        ✕
+      </button>
+    </div>
+  </div>
 
         {/* Body */}
         <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
@@ -433,15 +571,23 @@ export function EditOrderModal({
 
               {/* Prateleira de canto */}
               {details.complements === 'prateleira' && (
-                <Select
-                  label="Cor do suporte *"
-                  value={details.shelfColorMode}
-                  onChange={(v) => setDetails({ ...details, shelfColorMode: v })}
-                  options={[
-                    { value: 'padrao', label: 'Padrão' },
-                    { value: 'acabamento', label: 'Cor do Acabamento' },
-                  ]}
-                />
+                <>
+                  <Select
+                    label="Cor do suporte *"
+                    value={details.shelfColorMode}
+                    onChange={(v) => setDetails({ ...details, shelfColorMode: v })}
+                    options={[
+                      { value: 'padrao', label: 'Padrão' },
+                      { value: 'acabamento', label: 'Cor do Acabamento' },
+                    ]}
+                  />
+
+                  {details.shelfHeightPct != null && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Altura da prateleira: {details.shelfHeightPct}%
+                    </p>
+                  )}
+                </>
               )}
 
               {/* Serigrafia + Cor */}

@@ -355,7 +355,8 @@ function TinyIcon({ src, alt, size = 20 }: { src?: string; alt: string; size?: n
   const pascal = (s: string) =>
     s
       .replace(/[\s_-]+/g, ' ')
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .split(' ')
       .filter(Boolean)
       .map(t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase())
@@ -363,35 +364,53 @@ function TinyIcon({ src, alt, size = 20 }: { src?: string; alt: string; size?: n
 
   // Build a candidate list with different casings & extensions
   const candidates = React.useMemo(() => {
-  const { dir, file, query } = splitDir(src);
-  const base = stripExt(file); // e.g., "DiplomataGold_V3"
-  const exts = ['png', 'jpg'];
+    const { dir, file, query } = splitDir(src);
+    const base = stripExt(file); // e.g., "VisioSun"
+    const exts = ['png', 'jpg', 'jpeg', 'webp']; // light on extension check
 
-  // Build stem variants:
-  // - as-is: "DiplomataGold_V3"
-  // - join V: "DiplomataGoldV3"
-  // - lowercase both: "diplomatagold_v3", "diplomatagoldv3"
-  // - no underscores at all (paranoid)
-  const noUnderscoreV = base.replace(/_V(\d+)$/, 'V$1');
-  const lower = base.toLowerCase();
-  const lowerNoUnderscoreV = lower.replace(/_v(\d+)$/, 'v$1');
-  const joined = base.replace(/_/g, '');
-  const lowerJoined = lower.replace(/_/g, '');
+    // Variants of the "stem" we’ll try:
+    // - as-is
+    // - join _Vn → Vn
+    // - fully lowercase
+    // - lowercase + join _vn
+    // - remove underscores
+    // - lowercase + remove underscores
+    // - First letter upper, rest lower (Visiosun)
+    // - "Pascal" version from any separators (also gives Visiosun)
+    // - Pascal from lowercase (extra safety)
+    const noUnderscoreV = base.replace(/_V(\d+)$/, 'V$1');
+    const lower = base.toLowerCase();
+    const lowerNoUnderscoreV = lower.replace(/_v(\d+)$/, 'v$1');
+    const joined = base.replace(/_/g, '');
+    const lowerJoined = lower.replace(/_/g, '');
+    const firstUpper = base ? base[0].toUpperCase() + base.slice(1).toLowerCase() : base;
+    const pascalBase = pascal(base);
+    const pascalLower = pascal(lower);
 
-  const shapes = [base, noUnderscoreV, lower, lowerNoUnderscoreV, joined, lowerJoined];
+    const shapes = [
+      base,
+      noUnderscoreV,
+      lower,
+      lowerNoUnderscoreV,
+      joined,
+      lowerJoined,
+      firstUpper,
+      pascalBase,
+      pascalLower,
+    ];
 
-  // De-dup while preserving order and build extension candidates
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const shape of shapes) {
-    if (seen.has(shape)) continue;
-    seen.add(shape);
-    for (const ext of exts) {
-      out.push(`${dir}${shape}.${ext}${query}`);
+    const seen = new Set<string>();
+    const out: string[] = [];
+
+    for (const shape of shapes) {
+      if (!shape || seen.has(shape)) continue;
+      seen.add(shape);
+      for (const ext of exts) {
+        out.push(`${dir}${shape}.${ext}${query}`);
+      }
     }
-  }
-  return out;
-}, [src]);
+    return out;
+  }, [src]);
 
   const [idx, setIdx] = React.useState(0);
 
