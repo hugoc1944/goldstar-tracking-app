@@ -104,7 +104,7 @@ function RailDot({ active }: { active: boolean }) {
 }
 
 function formatCustomizationValue(key: string, value: unknown): string {
-  if (value == null) return '—';
+  if (value == null) return '-';
 
   // arrays → comma-separated
   if (Array.isArray(value)) {
@@ -115,14 +115,14 @@ function formatCustomizationValue(key: string, value: unknown): string {
   // numbers → as-is
   if (typeof value === 'number') return String(value);
   // non-strings we can't format
-  if (typeof value !== 'string') return '—';
+  if (typeof value !== 'string') return '-';
 
   let v = value.trim();
   if ((key === 'handleKey' || key === 'handle') && /^h(\d)$/i.test(v)) {
     const n = v.match(/^h(\d)$/i)![1];
     return `Puxador ${n}`;
   }
-  if (!v) return '—';
+  if (!v) return '-';
 
   // ✅ Serigrafia: keep only the code (e.g. "Ser001 Silkscreen" → "SER001")
   if (key === 'serigrafiaKey' || key === 'serigrafia' || key === 'serigraphy') {
@@ -151,26 +151,26 @@ function formatCustomizationValue(key: string, value: unknown): string {
 }
 
 const STEPS: Step[] = ['PREPARACAO', 'PRODUCAO', 'EXPEDICAO', 'ENTREGUE'];
-const pretty = (v?: string | null) => (v && v !== 'DIVERSOS' ? v : '—');
+const pretty = (v?: string | null) => (v && v !== 'DIVERSOS' ? v : '-');
 function fmtDate(d?: string | Date | null) {
-  if (!d) return '—';
+  if (!d) return '-';
   const dt = typeof d === 'string' ? new Date(d) : d;
-  if (Number.isNaN(dt.getTime())) return '—';
+  if (Number.isNaN(dt.getTime())) return '-';
   return dt.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function shortRef(id?: string) {
-  if (!id) return '—';
+  if (!id) return '-';
   return `#${id.slice(0, 4)}`;
 }
 
 const fmtEUR = (c?: number | null) =>
   typeof c === 'number'
     ? (c / 100).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })
-    : '—';
+    : '-';
 
 function humanizeModelName(m?: string | null) {
-  if (!m) return '—';
+  if (!m) return '-';
   // underscores/hyphens → spaces
   let s = m.replace(/[_-]+/g, ' ').trim();
   // "Europa V3" (or "v3") → "Europa Variação 3"
@@ -545,13 +545,13 @@ export default function PublicOrderPage({
                   // 2) Complemento (se existir e não for "Nenhum")
                   if (base.complements != null) {
                     const compText = formatCustomizationValue('complements', base.complements);
-                    if (compText && compText !== 'Nenhum' && compText !== '—') {
+                    if (compText && compText !== 'Nenhum' && compText !== '-') {
                       rows.push({ label: CUSTOM_LABEL['complements'], value: compText });
                       seen.add('complemento');
                     }
                   }
 
-                  // 3) Customizações selecionadas — ordenadas e sem “Nenhum”
+                  // 3) Customizações selecionadas - ordenadas e sem “Nenhum”
                   const ORDERED_KEYS = [
                     'handleKey',
                     'finishKey',
@@ -586,14 +586,14 @@ export default function PublicOrderPage({
                     if (!(k in cust) || EXCLUDE.has(k)) continue;
                     const fv = formatCustomizationValue(k, (cust as any)[k]);
                     if (k === 'complemento' && seen.has('complemento')) continue;
-                    if (!fv || fv === 'Nenhum' || fv === '—') continue;
+                    if (!fv || fv === 'Nenhum' || fv === '-') continue;
                     rows.push({ label: CUSTOM_LABEL[k] ?? k, value: fv });
                   }
                   // any remaining keys (but not excluded)
                   for (const [k, v] of Object.entries(cust)) {
                     if (EXCLUDE.has(k) || ORDERED_KEYS.includes(k)) continue;
                     const fv = formatCustomizationValue(k, v);
-                    if (!fv || fv === 'Nenhum' || fv === '—') continue;
+                    if (!fv || fv === 'Nenhum' || fv === '-') continue;
                     rows.push({ label: CUSTOM_LABEL[k] ?? k, value: fv });
                   }
 
@@ -646,7 +646,7 @@ export default function PublicOrderPage({
                   const dMm =
                     data?.measures?.depthMm ?? (cust.depthMm != null ? Number(cust.depthMm) : null);
 
-                  const toCm = (mm?: number | null) => (mm == null ? '—' : `${Math.round(mm / 10)} cm`);
+                  const toCm = (mm?: number | null) => (mm == null ? '-' : `${Math.round(mm / 10)} cm`);
 
                   return (
                     <div className="grid gap-4 md:grid-cols-1">
@@ -686,11 +686,11 @@ export default function PublicOrderPage({
                                 {formatCustomizationValue('housingType', d?.housingType)}
                               </li>
                               <li>
-                                <span className="font-medium">Andar:</span> {d?.floorNumber ?? '—'}
+                                <span className="font-medium">Andar:</span> {d?.floorNumber ?? '-'}
                               </li>
                               <li>
                                 <span className="font-medium">Elevador:</span>{' '}
-                                {d?.hasElevator == null ? '—' : d.hasElevator ? 'Sim' : 'Não'}
+                                {d?.hasElevator == null ? '-' : d.hasElevator ? 'Sim' : 'Não'}
                               </li>
                             </ul>
                           );

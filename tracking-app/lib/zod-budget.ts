@@ -51,6 +51,7 @@ export const BudgetCreateSchema = z.object({
   visionBar: z.string().optional(),
   towelColorMode: DualColorModeEnum.optional(), // when complemento === 'toalheiro1'
   shelfColorMode: DualColorModeEnum.optional(), // when complemento === 'prateleira'
+  shelfHeightPct: z.number().int().min(20).max(100).optional(), 
 
   cornerChoice: z.string().optional(),
   cornerColorMode: z.string().optional(),

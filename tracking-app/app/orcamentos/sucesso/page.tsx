@@ -10,7 +10,7 @@ import ClientLogger from './ClientLogger';   // <-- add this import
 // Tiny client logger to print the id in the browser console (optional)
 
 function shortRef(id?: string | null) {
-  return id ? `#${id.slice(0, 4)}` : '—';
+  return id ? `#${id.slice(0, 4)}` : '-';
 }
 
 export default function BudgetSuccessPage({

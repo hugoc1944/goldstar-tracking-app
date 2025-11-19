@@ -174,7 +174,7 @@ function modelStemFromAny(input: string) {
 
 const PRE = '/previews';
 
-// — modelos (agora robusto a label/value com espaços/hífens/CamelCase)
+// - modelos (agora robusto a label/value com espaços/hífens/CamelCase)
 const modelIconSrc = (valueOrLabel: string) => `${PRE}/models/${modelStemFromAny(valueOrLabel)}.png`;
 // remove acentos e espaços para bater certo em nomes tipo "AguaViva", "PolicarbonatoTransparente"
 function labelToStem(label: string) {
@@ -191,10 +191,10 @@ function toPascalNoSep(input: string) {
     .join('');
 }
 
-// — acabamentos
+// - acabamentos
 const finishIconSrc = (name: string) => `${PRE}/finishes/${toPascalNoSep(name)}.png`;
 
-// — puxadores (catálogo usa p.ex. h1..h7/sem); simulador usa Handle_1..8 e none/default
+// - puxadores (catálogo usa p.ex. h1..h7/sem); simulador usa Handle_1..8 e none/default
 function handleIconSrc(value?: string) {
   if (!value || value === '' ) return `${PRE}/handles/default.png`;
   if (/^h(\d)$/i.test(value)) return `${PRE}/handles/Handle_${value.replace(/^h/i,'')}.png`;
@@ -202,13 +202,13 @@ function handleIconSrc(value?: string) {
   return `${PRE}/handles/default.png`;
 }
 
-// — vidros/monos (ficheiros tipo Transparente.png, Fosco.png, Gris.png, ...)
+// - vidros/monos (ficheiros tipo Transparente.png, Fosco.png, Gris.png, ...)
 const glassIconSrcFromLabel = (label: string) => `${PRE}/glass/vidros/${labelToStem(label)}.png`;
 
-// — acrílicos (ficheiros tipo AguaViva.png, PolicarbonatoTransparente.png, ...)
+// - acrílicos (ficheiros tipo AguaViva.png, PolicarbonatoTransparente.png, ...)
 const acrylicIconSrcFromLabel = (label: string) => `${PRE}/acrylics/${labelToStem(label)}.png`;
 
-// — serigrafias (ficheiros tipo SER001.png, Quadro1.png, Elo2.png, ...)
+// - serigrafias (ficheiros tipo SER001.png, Quadro1.png, Elo2.png, ...)
 const silkIconSrc = (id: string) => `${PRE}/glass/silks/${id}.png`;
 
 
@@ -285,7 +285,7 @@ function silkSort(a: CatItem, b: CatItem) {
   return normalizedSilkLabel(a).localeCompare(normalizedSilkLabel(b), 'pt');
 }
 
-// — complemento (ícones opcionais)
+// - complemento (ícones opcionais)
 function complementoIconSrc(value: string) {
   const v = value.toLowerCase();
   if (v === 'vision') return `${PRE}/toalheiros/Vision.png`;
@@ -319,7 +319,7 @@ function silkIconFromOpt(opt: { value: string; label: string }) {
   return `${PRE}/glass/silks/${id}.png`;
 }
 
-// — Vision > cor da barra (catálogo costuma ter 'glass' | 'white' | 'black')
+// - Vision > cor da barra (catálogo costuma ter 'glass' | 'white' | 'black')
 function visionBarIconSrc(value: string) {
   const v = value.toLowerCase();
   if (v === 'glass') return `${PRE}/glass/vidros/Transparente.png`;
@@ -440,7 +440,7 @@ function IconSelect({
   options,
   groups,
   getIcon,
-  placeholder = '—',
+  placeholder = '-',
   disabled,
   iconSize = 20,
   itemIconSize = 20,
@@ -613,7 +613,7 @@ export const PublicBudgetSchema = z.object({
   glassTypeKey: z.string().min(1),
   acrylicKey: z.string().optional(),
   serigrafiaKey: z.string().optional(),
-serigrafiaColor: z.string().optional(),
+  serigrafiaColor: z.string().optional(),
   fixingBarMode: FixBarModeEnum.optional(),
 
   complemento: z.string().min(1),
@@ -625,6 +625,7 @@ serigrafiaColor: z.string().optional(),
   shelfColorMode: DualColorModeEnum.optional(),
   cornerChoice: z.string().optional(),
   cornerColorMode: z.string().optional(),
+  shelfHeightPct: NumOpt,
 
   // medidas
   widthMm: NumOpt,
@@ -751,7 +752,7 @@ export function BudgetFormPageInner() {
       })(),
       visionSupport: undefined, visionBar: undefined,
       towelColorMode: undefined, shelfColorMode: undefined,   
-      cornerChoice: undefined, cornerColorMode: undefined,
+      cornerChoice: undefined, cornerColorMode: undefined, shelfHeightPct: undefined,
       widthMm: undefined, heightMm: undefined, depthMm: undefined,
       willSendLater: search.get('later') === '1',
       deliveryType: '',
@@ -771,7 +772,7 @@ export function BudgetFormPageInner() {
       setCatalog(data as Catalog);
     })();
   }, []);
-  // EFFECT A — set model from URL after catalog is ready (enables rule fetch)
+  // EFFECT A - set model from URL after catalog is ready (enables rule fetch)
 React.useEffect(() => {
   if (!catalog) return;
 
@@ -796,8 +797,15 @@ React.useEffect(() => {
   if (w != null) form.setValue('widthMm', w,  { shouldDirty: false });
   if (h != null) form.setValue('heightMm', h, { shouldDirty: false });
   if (d != null) form.setValue('depthMm', d,  { shouldDirty: false });
+  
+  // altura da prateleira (%)
+  const a = asInt(search.get('altura'));
+  if (a != null) {
+    const pct = Math.max(20, Math.min(100, a)); // clamp 20–100
+    form.setValue('shelfHeightPct', pct, { shouldDirty: false });
+  }
 }, [catalog]); 
-// DEFAULT MODEL — if no ?model= and form still empty, pick the first model
+// DEFAULT MODEL - if no ?model= and form still empty, pick the first model
 React.useEffect(() => {
   if (!catalog) return;
   const current = form.getValues('modelKey');
@@ -819,7 +827,7 @@ React.useEffect(() => {
     })();
   }, [modelKey]);
 
-  // EFFECT B — after rule is known, map *all other* URL params to valid options
+  // EFFECT B - after rule is known, map *all other* URL params to valid options
   React.useEffect(() => {
     if (!catalog || !rule) return;
 
@@ -946,6 +954,17 @@ if (rawSer) {
       form.setValue('shelfColorMode', shelf as any, { shouldDirty: false });
     }
 
+      const cornerRaw = search.get('corner') ?? search.get('cornerChoice');
+    if (cornerRaw) {
+      const cc = canon(cornerRaw);
+      let normalized: string | undefined;
+      if (cc === 'corner1' || cc === 'canto1') normalized = 'corner1';
+      else if (cc === 'corner2' || cc === 'canto2') normalized = 'corner2';
+      if (normalized) {
+        form.setValue('cornerChoice', normalized, { shouldDirty: false });
+      }
+    }
+
     // Fixing bar mode (if rule.hasFixingBar)
     const fb = search.get('fixingBarMode')?.toLowerCase();
     if (rule.hasFixingBar && (fb === 'padrao' || fb === 'acabamento')) {
@@ -1066,6 +1085,7 @@ React.useEffect(() => {
 
 // 2) When complemento requires extra choices, pick defaults
   const comp = form.watch('complemento');
+const shelfHeightPct = form.watch('shelfHeightPct') ?? 100;
 
 React.useEffect(() => {
   if (comp === 'vision') {
@@ -1155,20 +1175,26 @@ React.useEffect(() => {
   };
 
 
-  React.useEffect(() => {
-    if (comp !== 'vision') {
-      form.setValue('barColor', undefined, { shouldDirty:true });
-      form.setValue('visionSupport', undefined, { shouldDirty:true });
-    }
-    if (comp !== 'toalheiro1') {
+React.useEffect(() => {
+  if (comp !== 'vision') {
+    form.setValue('barColor', undefined, { shouldDirty:true });
+    form.setValue('visionSupport', undefined, { shouldDirty:true });
+  }
+  if (comp !== 'toalheiro1') {
     form.setValue('towelColorMode', undefined, { shouldDirty:true });
-    }
+  }
 
-    // NEW: clear Prateleira color when complemento is not prateleira
-    if (comp !== 'prateleira') {
-      form.setValue('shelfColorMode', undefined, { shouldDirty:true });
+  if (comp !== 'prateleira') {
+    // leaving Prateleira → clear color + altura
+    form.setValue('shelfColorMode', undefined, { shouldDirty:true });
+    form.setValue('shelfHeightPct', undefined, { shouldDirty:true });
+  } else {
+    // entering Prateleira with no height yet → set sensible default
+    if (form.getValues('shelfHeightPct') == null) {
+      form.setValue('shelfHeightPct', 100, { shouldDirty:true }); // or 100 if you prefer
     }
-  }, [comp]);
+  }
+}, [comp]);
   // If model is not Strong/Painel, force-remove "toalheiro1"
 React.useEffect(() => {
   if (!showToalheiro1 && form.getValues('complemento') === 'toalheiro1') {
@@ -1395,6 +1421,100 @@ React.useEffect(() => {
     form.setValue('handleKey', def, { shouldDirty:true });
   }
 }, [modelKey, rule]);
+
+  const values = form.watch();
+
+  const simulatorUrl = React.useMemo(() => {
+    if (!simModelParam) {
+      return 'https://simulador.mfn.pt/';
+    }
+
+    const params = new URLSearchParams();
+    params.set('model', simModelParam);
+
+    // Acabamento
+    if (values.finishKey) {
+      params.set('finish', values.finishKey);
+    }
+
+    // Vidro / Monocromático
+    if (values.glassTypeKey) {
+      const g = values.glassTypeKey;
+      let glassToken = g;
+
+      // Map "mono_gris" → "gris", "mono_bronze" → "bronze", etc.
+      if (g.startsWith('mono_')) {
+        glassToken = g.replace(/^mono_/, '');
+      }
+
+      params.set('glass', glassToken);
+    }
+
+    // Puxador (se modelo permitir)
+    if (!hideHandles && values.handleKey) {
+      params.set('handle', values.handleKey);
+    }
+
+    // Complemento
+    if (values.complemento && values.complemento !== 'nenhum') {
+      params.set('complemento', values.complemento);
+    }
+
+    // Barra de fixação
+    if (rule?.hasFixingBar && values.fixingBarMode) {
+      params.set('fixingBarMode', values.fixingBarMode);
+    }
+
+    // Acrílico
+    if (values.acrylicKey && values.acrylicKey !== 'nenhum') {
+      params.set('acrylic', values.acrylicKey);
+    }
+
+    // Serigrafia
+    if (values.serigrafiaKey && values.serigrafiaKey !== 'nenhum') {
+      const sel = serigrafias.find(o => o.value === values.serigrafiaKey);
+      const silkId = sel ? silkIdFrom(sel.value, sel.label) : values.serigrafiaKey;
+      params.set('serigrafia', silkId);
+
+      if (values.serigrafiaColor) {
+        // use one of the names the simulator already accepts
+        params.set('serigrafiaColor', values.serigrafiaColor);
+      }
+    }
+
+    // Vision
+    if (values.complemento === 'vision') {
+      if (values.barColor) params.set('barColor', values.barColor);
+      if (values.visionSupport) params.set('visionSupport', values.visionSupport);
+    }
+
+    // Toalheiro 1
+    if (values.complemento === 'toalheiro1' && values.towelColorMode) {
+      params.set('towel', values.towelColorMode); // accepted alias in simulator
+    }
+
+    // Prateleira de Canto
+    if (values.complemento === 'prateleira') {
+      if (values.shelfColorMode) {
+        params.set('shelf', values.shelfColorMode); // shelfColorMode
+      }
+      if (values.shelfHeightPct != null) {
+        params.set('altura', String(Math.round(values.shelfHeightPct)));
+      }
+      const cc = values.cornerChoice;
+      if (cc === 'corner1' || cc === 'corner2') {
+        params.set('corner', cc);
+      }
+    }
+
+    // Medidas (cm → params; simulator will interpret them)
+    if (values.widthMm)  params.set('width',  String(values.widthMm));
+    if (values.heightMm) params.set('height', String(values.heightMm));
+    if (!hideDepth && values.depthMm) params.set('depth', String(values.depthMm));
+
+    return `https://simulador.mfn.pt/?${params.toString()}`;
+  }, [simModelParam, values, hideHandles, hideDepth, rule, serigrafias]);
+
   return (
   <main className="mx-auto max-w-6xl px-4 sm:px-6 md:px-8 py-5 sm:py-6 md:py-8">
     {/* Top bar with simulator logo + responsive CTA */}
@@ -1409,7 +1529,7 @@ React.useEffect(() => {
     />
     <div className="sm:ml-auto w-full sm:w-auto">
       <a
-        href={`https://simulador.mfn.pt/?model=${encodeURIComponent(simModelParam)}`}
+        href={simulatorUrl}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex w-full sm:w-auto justify-center items-center gap-2 rounded-xl bg-[#122C4F] px-4 py-3 text-white hover:bg-black/90
@@ -1529,7 +1649,7 @@ React.useEffect(() => {
                       getIcon={(opt) => fixBarIconSrc(opt.value as 'padrao'|'acabamento', selectedFinish)}
                       iconSize={36}
                       itemIconSize={48}
-                      placeholder="—"
+                      placeholder="-"
                     />
                   )}
                 />
@@ -1640,7 +1760,7 @@ React.useEffect(() => {
                         getIcon={(opt) => towelColorIconSrc(opt.value as 'padrao'|'acabamento', selectedFinish)}
                         iconSize={36}
                         itemIconSize={48}
-                        placeholder="—"
+                        placeholder="-"
                       />
                     )}
                   />
@@ -1648,28 +1768,69 @@ React.useEffect(() => {
               )}
 
               {comp === 'prateleira' && (
-                <FieldWrap
-                  label="Cor do suporte *"
-                  error={form.formState.errors?.['shelfColorMode']?.message as string | undefined}
-                >
-                  <Controller
-                    name="shelfColorMode"
-                    control={form.control}
-                    render={({ field }) => (
-                      <IconSelect
-                        value={(field.value ?? '') as string}
-                        onChange={(v) => field.onChange(v || undefined)}
-                        options={towelColorOptions} // [{padrao},{acabamento}] we already have
-                        getIcon={(opt) =>
-                          shelfColorIconSrc(opt.value as 'padrao' | 'acabamento', selectedFinish)
-                        }
-                        iconSize={36}
-                        itemIconSize={48}
-                        placeholder="—"
-                      />
-                    )}
-                  />
-                </FieldWrap>
+                <>
+                  <FieldWrap
+                    label="Cor do suporte *"
+                    error={form.formState.errors?.['shelfColorMode']?.message as string | undefined}
+                  >
+                    <Controller
+                      name="shelfColorMode"
+                      control={form.control}
+                      render={({ field }) => (
+                        <IconSelect
+                          value={(field.value ?? '') as string}
+                          onChange={(v) => field.onChange(v || undefined)}
+                          options={towelColorOptions} // [{padrao},{acabamento}] we already have
+                          getIcon={(opt) =>
+                            shelfColorIconSrc(opt.value as 'padrao' | 'acabamento', selectedFinish)
+                          }
+                          iconSize={36}
+                          itemIconSize={48}
+                          placeholder="-"
+                        />
+                      )}
+                    />
+                  </FieldWrap>
+
+                  {/* NEW: Altura da Prateleira slider */}
+                  <FieldWrap label={`Altura da prateleira (${shelfHeightPct}% )`}>
+                    <input
+                      type="range"
+                      min={20}
+                      max={100}
+                      step={1}
+                      value={shelfHeightPct}
+                      onChange={(e) =>
+                        form.setValue('shelfHeightPct', Number(e.target.value), { shouldDirty: true })
+                      }
+                      className="
+                        w-full h-2 appearance-none rounded-full
+                        bg-slate-200
+                        accent-[#FECB1F]
+                        [--thumb-size:18px]
+                        [&::-webkit-slider-thumb]:appearance-none
+                        [&::-webkit-slider-thumb]:w-[var(--thumb-size)]
+                        [&::-webkit-slider-thumb]:h-[var(--thumb-size)]
+                        [&::-webkit-slider-thumb]:rounded-full
+                        [&::-webkit-slider-thumb]:bg-white
+                        [&::-webkit-slider-thumb]:border
+                        [&::-webkit-slider-thumb]:border-slate-300
+                        [&::-webkit-slider-thumb]:shadow
+                        [&::-moz-range-thumb]:w-[var(--thumb-size)]
+                        [&::-moz-range-thumb]:h-[var(--thumb-size)]
+                        [&::-moz-range-thumb]:rounded-full
+                        [&::-moz-range-thumb]:bg-white
+                        [&::-moz-range-thumb]:border
+                        [&::-moz-range-thumb]:border-slate-300
+                        [&::-moz-range-thumb]:shadow
+                      "
+                    />
+                    <div className="mt-1 flex justify-between text-[11px] text-slate-500">
+                      <span>20%</span>
+                      <span>100%</span>
+                    </div>
+                  </FieldWrap>
+                </>
               )}
 
               <FieldWrap label="Serigrafia" error={form.formState.errors?.['serigrafiaKey']?.message as string | undefined}>

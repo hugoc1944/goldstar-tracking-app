@@ -138,9 +138,9 @@ export default function ArchivesPage() {
             ) : rows.map((r, idx) => (
               <tr key={r.id} className={idx % 2 ? 'bg-muted/20' : ''}>
                 <td className="py-3 pl-6 font-medium text-foreground">{r.shortId}</td>
-                <td className="py-3 text-foreground">{r.customer?.name || '—'}</td>
+                <td className="py-3 text-foreground">{r.customer?.name || '-'}</td>
                 <td className="py-3 text-foreground">
-                  {r.deliveredAt ? new Date(r.deliveredAt).toLocaleString('pt-PT') : '—'}
+                  {r.deliveredAt ? new Date(r.deliveredAt).toLocaleString('pt-PT') : '-'}
                 </td>
                 <td className="py-3 text-foreground">{r.model ?? 'Diversos'}</td>
                 <td className="py-3 pr-6 text-right">

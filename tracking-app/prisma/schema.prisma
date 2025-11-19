@@ -135,6 +135,7 @@ model Budget {
   cornerColorMode   String?
   fixingBarMode    String?
   shelfColorMode   String?
+  shelfHeightPct Int?   // 20–100, altura da prateleira em percentagem
   widthMm           Int?
   heightMm          Int?
   depthMm           Int?

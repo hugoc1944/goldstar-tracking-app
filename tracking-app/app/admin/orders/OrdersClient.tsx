@@ -319,7 +319,7 @@ useEffect(() => {
     },
 
     files: Array.isArray(data.filesJson) ? data.filesJson : [],
-     state: {                                     // <— NEW
+     state: {                                     // <- NEW
     status:        f.state?.status ?? 'PREPARACAO',
     visitAwaiting: !!f.state?.visitAwaiting,
     visitAt:       f.state?.visitAt ?? null,

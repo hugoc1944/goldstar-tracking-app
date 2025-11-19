@@ -66,7 +66,9 @@ export const AdminBudgetSchema = z.object({
   complemento: z.string().min(1),
   towelColorMode: z.enum(['padrao','acabamento']).optional(),
   shelfColorMode: z.enum(['padrao','acabamento']).optional(),
-
+    shelfHeightPct: z
+    .union([z.number().int(), z.string().transform(v => parseInt(v, 10))])
+    .optional(),
   cornerChoice: z.string().optional(),
   cornerColorMode: z.string().optional(),
 
@@ -102,7 +104,7 @@ type ModelRuleDTO = {
   hasFixingBar?: boolean;
 };
 
-// — euros helpers (comma or dot)
+// - euros helpers (comma or dot)
 function euroToCents(s: string | undefined | null) {
   if (!s) return undefined;
   const n = Number(String(s).replace(',', '.'));
@@ -163,6 +165,7 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
 
       cornerChoice: budget.cornerChoice ?? undefined,
       cornerColorMode: budget.cornerColorMode ?? undefined,
+      shelfHeightPct: budget.shelfHeightPct ?? 100,
 
       widthMm:  budget.widthMm  != null ? budget.widthMm  / 10 : undefined,
       heightMm: budget.heightMm != null ? budget.heightMm / 10 : undefined,
@@ -239,6 +242,7 @@ async function removeInvoice() {
 
   // Conditional clears (Vision / Towel / Shelf / Serigrafia)
   const comp = form.watch('complemento');
+  const shelfHeightPct = form.watch('shelfHeightPct') ?? 100;
   React.useEffect(() => {
     if (comp !== 'vision') {
       form.setValue('barColor', undefined, { shouldDirty:true });
@@ -250,6 +254,14 @@ async function removeInvoice() {
     if (comp !== 'prateleira') {
       form.setValue('shelfColorMode', undefined, { shouldDirty:true });
     }
+      if (comp !== 'prateleira') {
+    form.setValue('shelfColorMode', undefined, { shouldDirty:true });
+    form.setValue('shelfHeightPct', undefined, { shouldDirty:true }); // NEW
+  } else {
+    if (form.getValues('shelfHeightPct') == null) {
+      form.setValue('shelfHeightPct', 100, { shouldDirty: true }); // e.g. middle
+    }
+  }
   }, [comp]);
 
   const selSer = form.watch('serigrafiaKey');
@@ -346,7 +358,7 @@ async function removeInvoice() {
       alert(data?.error ?? 'Falha ao enviar orçamento');
       return;
     }
-    alert(`Enviado. PDF: ${data.pdf ?? '—'}`);
+    alert(`Enviado. PDF: ${data.pdf ?? '-'}`);
   };
 
   const handleSend = async () => {
@@ -508,17 +520,90 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
           )}
 
           {comp === 'prateleira' && (
-            <Select
-              f={form}
-              name="shelfColorMode"
-              label="Cor do suporte *"
-              options={[
-                { value: 'padrao',     label: 'Padrão' },
-                { value: 'acabamento', label: 'Cor do Acabamento' },
-              ]}
-            />
-          )}
+            <>
+              <FieldWrap label="Cor da prateleira">
+                {/* existing shelfColorMode select */}
+                <select
+                  {...form.register('shelfColorMode')}
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                >
+                  <option value="padrao">Padrão</option>
+                  <option value="acabamento">Por acabamento</option>
+                </select>
+              </FieldWrap>
 
+              <FieldWrap label={`Altura da prateleira (${shelfHeightPct}% )`}>
+                <input
+                  type="range"
+                  min={20}
+                  max={100}
+                  step={1}
+                  value={shelfHeightPct}
+                  onChange={(e) =>
+                    form.setValue('shelfHeightPct', Number(e.target.value), {
+                      shouldDirty: true,
+                    })
+                  }
+                  className="w-full h-2 appearance-none rounded-full
+                            bg-slate-200
+                            accent-[#FECB1F]
+                            [--thumb-size:18px]
+                            [&::-webkit-slider-thumb]:appearance-none
+                            [&::-webkit-slider-thumb]:w-[var(--thumb-size)]
+                            [&::-webkit-slider-thumb]:h-[var(--thumb-size)]
+                            [&::-webkit-slider-thumb]:rounded-full
+                            [&::-webkit-slider-thumb]:bg-white
+                            [&::-webkit-slider-thumb]:border
+                            [&::-webkit-slider-thumb]:border-slate-300
+                            [&::-webkit-slider-thumb]:shadow
+                            [&::-moz-range-thumb]:w-[var(--thumb-size)]
+                            [&::-moz-range-thumb]:h-[var(--thumb-size)]
+                            [&::-moz-range-thumb]:rounded-full
+                            [&::-moz-range-thumb]:bg-white
+                            [&::-moz-range-thumb]:border
+                            [&::-moz-range-thumb]:border-slate-300
+                            [&::-moz-range-thumb]:shadow"
+                />
+                <div className="mt-1 flex justify-between text-[11px] text-slate-500">
+                  <span>20%</span>
+                  <span>100%</span>
+                </div>
+              </FieldWrap>
+            </>
+          )}
+          {comp === 'prateleira' && (
+            <div className="mt-3 flex items-center justify-between text-sm">
+              <span>
+                Altura da prateleira:{" "}
+                <strong>{shelfHeightPct}%</strong>
+              </span>
+              <a
+                href={(() => {
+                  const params = new URLSearchParams();
+                  const model = String(budget.modelKey || '').toLowerCase();
+                  if (model) params.set('model', model);
+
+                  params.set('complemento', 'prateleira');
+
+                  const shelfMode = form.getValues('shelfColorMode') || 'padrao';
+                  params.set('shelfColorMode', shelfMode);
+
+                  if (typeof shelfHeightPct === 'number') {
+                    params.set('altura', String(shelfHeightPct));
+                  }
+
+                  // (Optional: you can also add finish/glass/handle/etc from `budget` here)
+
+                  return `https://simulador.mfn.pt/?${params.toString()}`;
+                })()}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center rounded border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-50"
+              >
+                Ver altura
+              </a>
+            </div>
+          )}
           <Select f={form} name="serigrafiaKey" label="Serigrafia" options={serigrafias} />
           {selSer && selSer !== 'nenhum' && (
             <Select
@@ -820,7 +905,7 @@ function Select({
             value={(field.value ?? '') as string}
             className="w-full border rounded px-3 py-2"
           >
-            {allowEmpty && <option value="">—</option>}
+            {allowEmpty && <option value="">-</option>}
             {options?.map((o, i) => (
               <option key={`${o.value}-${i}`} value={o.value}>{o.label}</option>
             ))}

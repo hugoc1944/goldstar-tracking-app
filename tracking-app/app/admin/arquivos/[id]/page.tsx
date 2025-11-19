@@ -150,7 +150,7 @@ export default function ArchiveDetail({
       <header className="mb-6">
         <h1 className="text-2xl font-semibold">Arquivo - {data.shortId}</h1>
         <p className="text-sm text-muted-foreground">
-          Entregue em {data.deliveredAt ? new Date(data.deliveredAt).toLocaleString('pt-PT') : '—'}
+          Entregue em {data.deliveredAt ? new Date(data.deliveredAt).toLocaleString('pt-PT') : '-'}
         </p>
       </header>
 
@@ -251,7 +251,7 @@ function Item({ label, value, className = '' }: { label: string; value?: string 
   return (
     <div className={className}>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-sm text-foreground">{value || '—'}</div>
+      <div className="text-sm text-foreground">{value || '-'}</div>
     </div>
   );
 }

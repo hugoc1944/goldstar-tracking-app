@@ -8,19 +8,19 @@ const titleCase = (s: string) =>
   s.toLowerCase().replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 function humanModel(key?: string | null) {
-  if (!key) return '—';
+  if (!key) return '-';
   const k = String(key).toLowerCase().replace(/-/g, '_');
   const m = k.match(/_v(\d+)$/);
   const base = titleCase(k.replace(/_v\d+$/, ''));
   return m ? `${base} Variação ${m[1]}` : base;
 }
 function humanHandle(v?: string | null) {
-  if (!v) return '—';
+  if (!v) return '-';
   const m = String(v).match(/^h(\d)$/i);
   return m ? `Puxador ${m[1]}` : titleCase(String(v));
 }
 function humanComplemento(v?: string | null) {
-  if (!v) return '—';
+  if (!v) return '-';
   const map: Record<string, string> = {
     vision: 'Vision',
     toalheiro1: 'Toalheiro 1',
@@ -30,13 +30,13 @@ function humanComplemento(v?: string | null) {
   const k = String(v).toLowerCase();
   return map[k] ?? titleCase(k);
 }
-const eur = (c?: number) => (typeof c === 'number' ? (c / 100).toFixed(2) + ' €' : '—');
-const mmToCm = (mm?: number) => (typeof mm === 'number' ? `${Math.round(mm / 10)} cm` : '—');
+const eur = (c?: number) => (typeof c === 'number' ? (c / 100).toFixed(2) + ' €' : '-');
+const mmToCm = (mm?: number) => (typeof mm === 'number' ? `${Math.round(mm / 10)} cm` : '-');
 
 const bonusNiceLabel = (v?: string) =>
   v === 'gelGOLDSTAR' ? 'Gel de Banho GOLDSTAR'
   : v === 'shampooGOLDSTAR' ? 'Shampoo GOLDSTAR'
-  : '—';
+  : '-';
 
 // Map DB/internal glass keys to the public tokens the simulator expects
 function toPublicGlass(raw?: string | null) {
@@ -85,7 +85,7 @@ function buildSimUrlFromBudget(b: any) {
     if (b.serigrafiaColor) q.set('serCor', String(b.serigrafiaColor)); // padrao | acabamento
   }
 
-  // Fixing bar (“barra de fixação”) — only two modes
+  // Fixing bar (“barra de fixação”) - only two modes
   if (b.fixingBarMode) {
     // padrao | acabamento  (viewer maps → 'default' | 'finish')
     q.set('fixingBarMode', String(b.fixingBarMode));
@@ -217,17 +217,17 @@ export function OrcamentoPDF({ b }: { b: any }) {
           <View style={styles.sectionBody}>
             <View style={styles.row}><Text style={styles.label}>Modelo</Text><Text style={styles.value}>{humanModel(b.modelKey)}</Text></View>
             <View style={styles.row}><Text style={styles.label}>Puxador</Text><Text style={styles.value}>{humanHandle(b.handleKey)}</Text></View>
-            <View style={styles.row}><Text style={styles.label}>Acabamento</Text><Text style={styles.value}>{titleCase(String(b.finishKey ?? '—'))}</Text></View>
-            <View style={styles.row}><Text style={styles.label}>Vidro / Monocromático</Text><Text style={styles.value}>{titleCase(String(b.glassTypeKey ?? '—'))}</Text></View>
+            <View style={styles.row}><Text style={styles.label}>Acabamento</Text><Text style={styles.value}>{titleCase(String(b.finishKey ?? '-'))}</Text></View>
+            <View style={styles.row}><Text style={styles.label}>Vidro / Monocromático</Text><Text style={styles.value}>{titleCase(String(b.glassTypeKey ?? '-'))}</Text></View>
             <View style={styles.row}><Text style={styles.label}>Complemento</Text><Text style={styles.value}>{humanComplemento(b.complemento)}</Text></View>
 
             {b.complemento === 'vision' && (
               <>
                 {b.barColor ? (
-                  <View style={styles.row}><Text style={styles.label}>Vision — Barra</Text><Text style={styles.value}>{titleCase(b.barColor)}</Text></View>
+                  <View style={styles.row}><Text style={styles.label}>Vision - Barra</Text><Text style={styles.value}>{titleCase(b.barColor)}</Text></View>
                 ) : null}
                 {b.visionSupport ? (
-                  <View style={styles.row}><Text style={styles.label}>Vision — Suporte</Text><Text style={styles.value}>{titleCase(b.visionSupport)}</Text></View>
+                  <View style={styles.row}><Text style={styles.label}>Vision - Suporte</Text><Text style={styles.value}>{titleCase(b.visionSupport)}</Text></View>
                 ) : null}
               </>
             )}
