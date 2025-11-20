@@ -38,7 +38,7 @@ const CreateBody = z.object({
     handleKey: z.string().optional().nullable(),        // <— NEW
 
     // complements + per-complement colors
-    complements: z.string().optional().nullable(),      // e.g. "vision" | "toalheiro1" | "prateleira" | "nenhum"
+    complements: z.union([z.string(), z.array(z.string())]).optional().nullable(),
     barColor: z.string().optional().nullable(),         // vision only
     visionSupport: z.string().optional().nullable(),    // vision only
     towelColorMode: z.string().optional().nullable(),   // toalheiro1 only: "padrao" | "acabamento"
@@ -114,6 +114,23 @@ export async function POST(req: Request) {
       },
     });
   }
+const normalizeComplements = (raw: any): string => {
+  if (!raw) return 'nenhum';
+
+  const arr =
+    Array.isArray(raw)
+      ? raw
+      : typeof raw === 'string'
+      ? raw.split(',')
+      : [];
+
+  const cleaned = arr
+    .map(s => String(s).trim().toLowerCase())
+    .filter(Boolean)
+    .filter(c => c !== 'nenhum');
+
+  return cleaned.length ? cleaned.join(',') : 'nenhum';
+};
 
   const publicToken = crypto.randomBytes(24).toString('base64url');
 
@@ -139,6 +156,23 @@ export async function POST(req: Request) {
       },
       select: { id:true, status:true, eta:true, publicToken:true, createdAt:true }
     });
+const normalizeComplements = (raw: any): string => {
+  if (!raw) return 'nenhum';
+
+  const arr =
+    Array.isArray(raw)
+      ? raw
+      : typeof raw === 'string'
+      ? raw.split(',')
+      : [];
+
+  const cleaned = arr
+    .map(s => String(s).trim().toLowerCase())
+    .filter(Boolean)
+    .filter(c => c !== 'nenhum');
+
+  return cleaned.length ? cleaned.join(',') : 'nenhum';
+};
 
     // Item sintético com os detalhes do produto
     await tx.orderItem.create({
@@ -149,7 +183,7 @@ export async function POST(req: Request) {
         model: order.model,
 
         // guardamos o código simples do complemento; cores/“modes” ficam em customizations
-        complements: order.complements ?? 'nenhum',
+        complements: normalizeComplements(order.complements),
 
         // tudo o resto segue para customizations (para o EditOrderModal pré-preencher)
         customizations: {

@@ -59,6 +59,25 @@ export async function GET(req: NextRequest) {
   return ok({ items, nextCursor });
 }
 
+function normalizeComplementos(raw: any): string | null {
+  if (!raw) return null;
+
+  const arr =
+    Array.isArray(raw)
+      ? raw
+      : typeof raw === 'string'
+        ? raw.split(',')
+        : [];
+
+  const cleaned = arr
+    .map(s => String(s).trim().toLowerCase())
+    .filter(Boolean)
+    .filter(c => c !== 'nenhum');
+
+  return cleaned.length ? cleaned.join(',') : null;
+}
+
+
 export async function POST(req: NextRequest) {
   try {
     const raw = await req.json();
@@ -67,14 +86,15 @@ export async function POST(req: NextRequest) {
 
     const data = parsed.data;
 
-    const created = await prisma.budget.create({
-      data: {
-        ...data,
-        // keep JSONB cast if needed:
-        photoUrls: data.photoUrls as any,
-      },
-    });
+  const { complementos, ...rest } = data;  // <-- strip invalid field
 
+  const created = await prisma.budget.create({
+    data: {
+      ...rest,
+      complemento: normalizeComplementos(complementos) ?? 'nenhum',
+      photoUrls: data.photoUrls as any,
+    },
+  });
     // Fire-and-forget confirmation email to the requester (does not set sentAt)
     try {
       if (process.env.RESEND_API_KEY && created.email) {

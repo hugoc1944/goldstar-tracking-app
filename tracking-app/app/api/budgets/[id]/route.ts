@@ -29,9 +29,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const raw = await req.json();
   const parsed = BudgetUpdateSchema.safeParse(raw);
   if (!parsed.success) return bad(parsed.error.message, 422);
-  const data = parsed.data;
+const data = parsed.data;
 
-  const updated = await prisma.budget.update({ where: { id }, data });
+// --- FIX: strip complementos & generate complemento + complements ---
+const { complementos, ...rest } = data;
+
+const cleanComps = (complementos ?? [])
+  .map((c: string) => String(c).trim().toLowerCase())
+  .filter(Boolean)
+  .filter(c => c !== 'nenhum');
+
+const normalizedComplemento =
+  cleanComps.length ? cleanComps.join(',') : 'nenhum';
+
+const updated = await prisma.budget.update({
+  where: { id },
+  data: {
+    ...rest,
+    complemento: normalizedComplemento,   // ONLY this — canonical field
+  }
+});
   return ok(updated);
 }
 

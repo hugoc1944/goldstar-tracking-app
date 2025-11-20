@@ -63,17 +63,21 @@ export const AdminBudgetSchema = z.object({
   serigrafiaColor: z.enum(['padrao','acabamento']).optional(),
 
   fixingBarMode: z.enum(['padrao','acabamento']).optional(),
-  complemento: z.string().min(1),
+
+  // ✅ NEW canonical field
+  complementos: z.array(z.string()).default([]),
+
   towelColorMode: z.enum(['padrao','acabamento']).optional(),
   shelfColorMode: z.enum(['padrao','acabamento']).optional(),
-    shelfHeightPct: z
+  shelfHeightPct: z
     .union([z.number().int(), z.string().transform(v => parseInt(v, 10))])
     .optional(),
+
   cornerChoice: z.string().optional(),
   cornerColorMode: z.string().optional(),
 
   // medidas (form em CM)
-  widthMm: NumOpt,   // holds CM in the form; we'll convert to mm on PATCH
+  widthMm: NumOpt,
   heightMm: NumOpt,
   depthMm: NumOpt,
 
@@ -88,9 +92,40 @@ export const AdminBudgetSchema = z.object({
 
   photoUrls: z.array(z.string().url()).optional(),
   notes: z.string().optional(),
+}).superRefine((val, ctx) => {
+  const comps = val.complementos ?? [];
+
+  if (comps.includes('vision')) {
+    if (!val.barColor) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório com Vision.', path: ['barColor'] });
+    }
+    if (!val.visionSupport) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório com Vision.', path: ['visionSupport'] });
+    }
+  }
+
+  if (comps.includes('toalheiro1')) {
+    if (!val.towelColorMode) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório para Toalheiro.', path: ['towelColorMode'] });
+    }
+  }
+
+  if (comps.includes('prateleira')) {
+    if (!val.shelfColorMode) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório para Prateleira.', path: ['shelfColorMode'] });
+    }
+  }
 });
 type FormValues = z.infer<typeof AdminBudgetSchema>;
 type RHFResolver = Resolver<FormValues, any, FormValues>;
+
+
+const parseComps = (raw?: string | null) =>
+  (raw ?? '')
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+    .filter(c => c !== 'nenhum');
 
 /* ---------------- Types from /api/catalog ---------------- */
 type CatItem = { value: string; label: string; order?: number };
@@ -126,7 +161,15 @@ function normalizeForPatch(values: any) {
     'fixingBarMode','towelColorMode','shelfColorMode',
     'cornerChoice','cornerColorMode','housingType','notes'
   ].forEach(emptyToUndef);
+ // ✅ complementos → complements (legacy string) + complemento fallback
+  const cleanComps = (out.complementos ?? [])
+    .map((c: string) => String(c).trim().toLowerCase())
+    .filter(Boolean)
+    .filter((c: string) => c !== 'nenhum');
 
+  out.complementos = cleanComps;
+  out.complements = cleanComps.length ? cleanComps.join(',') : null;
+  out.complemento = cleanComps.length ? cleanComps.join(',') : 'nenhum';
   return out;
 }
 /* ---------------- Editor ---------------- */
@@ -159,7 +202,10 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
       serigrafiaColor: budget.serigrafiaColor ?? undefined,
 
       fixingBarMode: budget.fixingBarMode ?? undefined,
-      complemento: budget.complemento,
+      complementos: parseComps(
+        (budget as any).complements ??   // legacy string
+        (budget as any).complemento      // legacy single
+      ),
       towelColorMode: budget.towelColorMode ?? undefined,
       shelfColorMode: budget.shelfColorMode ?? undefined,
 
@@ -240,29 +286,31 @@ async function removeInvoice() {
     })();
   }, [modelKey]);
 
-  // Conditional clears (Vision / Towel / Shelf / Serigrafia)
-  const comp = form.watch('complemento');
+  // Conditional clears (Vision / Towel / Shelf)
+  const comps = form.watch('complementos') ?? [];
+  const hasVision = comps.includes('vision');
+  const hasTowel1 = comps.includes('toalheiro1');
+  const hasShelf  = comps.includes('prateleira');
+
   const shelfHeightPct = form.watch('shelfHeightPct') ?? 100;
+
   React.useEffect(() => {
-    if (comp !== 'vision') {
+    if (!hasVision) {
       form.setValue('barColor', undefined, { shouldDirty:true });
       form.setValue('visionSupport', undefined, { shouldDirty:true });
     }
-    if (comp !== 'toalheiro1') {
+    if (!hasTowel1) {
       form.setValue('towelColorMode', undefined, { shouldDirty:true });
     }
-    if (comp !== 'prateleira') {
+    if (!hasShelf) {
       form.setValue('shelfColorMode', undefined, { shouldDirty:true });
+      form.setValue('shelfHeightPct', undefined, { shouldDirty:true });
+    } else {
+      if (form.getValues('shelfHeightPct') == null) {
+        form.setValue('shelfHeightPct', 100, { shouldDirty:true });
+      }
     }
-      if (comp !== 'prateleira') {
-    form.setValue('shelfColorMode', undefined, { shouldDirty:true });
-    form.setValue('shelfHeightPct', undefined, { shouldDirty:true }); // NEW
-  } else {
-    if (form.getValues('shelfHeightPct') == null) {
-      form.setValue('shelfHeightPct', 100, { shouldDirty: true }); // e.g. middle
-    }
-  }
-  }, [comp]);
+  }, [hasVision, hasTowel1, hasShelf]);
 
   const selSer = form.watch('serigrafiaKey');
   React.useEffect(() => {
@@ -311,17 +359,21 @@ async function removeInvoice() {
   const hideHandles = !!rule?.hideHandles;
   const allowAcrylic = !!rule?.allowAcrylicAndPoly;
   const allowTowel1 = !!rule?.allowTowel1;
-
+  const complementoFiltered = React.useMemo(() => {
+    const base = (catalog?.['COMPLEMENTO'] ?? []) as CatItem[];
+    return allowTowel1 ? base.filter(o => o.value !== 'nenhum') 
+                      : base.filter(o => o.value !== 'nenhum' && o.value !== 'toalheiro1');
+  }, [catalog, allowTowel1]);
   /* ---------------- Actions ---------------- */
 
   const saveAll: SubmitHandler<FormValues> = async (values) => {
     // merge price/notes into a single PATCH (API supports these)
-    const payload = {
+    const payload = normalizeForPatch({
       ...values,
       priceCents: toCents(priceEuro),
       installPriceCents: toCents(installEuro),
       notes: values.notes ?? undefined,
-    };
+    });
     const res = await fetch(`/api/budgets/${budget.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -379,15 +431,15 @@ async function removeInvoice() {
 
   // --- persist once (remove your duplicate PATCH) ---
   const toMm = (cm?: number) => (cm == null ? undefined : Math.round(cm * 10));
-  const payload = {
-    ...form.getValues(),
-    priceCents: pCents,
-    installPriceCents: priceCents(installEuro),
-    widthMm:  toMm(form.getValues('widthMm')),
-    heightMm: toMm(form.getValues('heightMm')),
-    depthMm:  toMm(form.getValues('depthMm')),
-    notes: form.getValues('notes') || undefined,
-  };
+  const payload = normalizeForPatch({
+  ...form.getValues(),
+  priceCents: pCents,
+  installPriceCents: priceCents(installEuro),
+  widthMm:  toMm(form.getValues('widthMm')),
+  heightMm: toMm(form.getValues('heightMm')),
+  depthMm:  toMm(form.getValues('depthMm')),
+  notes: form.getValues('notes') || undefined,
+});
 
   try {
     const patchRes = await fetch(`/api/budgets/${budget.id}`, {
@@ -498,16 +550,27 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
             />
           )}
 
-          <Select f={form} name="complemento" label="Complemento *" options={complementoOpts} />
-
-          {comp === 'vision' && (
+          <FieldWrap label="Complementos">
+            <Controller
+              name="complementos"
+              control={form.control}
+              render={({ field }) => (
+                <ComplementoSelector
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                  options={complementoFiltered}
+                />
+              )}
+            />
+          </FieldWrap>
+          {hasVision &&  (
             <>
               <Select f={form} name="barColor" label="Cor da Barra Vision *" options={catalog?.VISION_BAR_COLOR ?? []} />
               <Select f={form} name="visionSupport" label="Cor de Suporte *" options={finishes} />
             </>
           )}
 
-          {comp === 'toalheiro1' && (
+          {hasTowel1 && (
             <Select
               f={form}
               name="towelColorMode"
@@ -519,7 +582,7 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
             />
           )}
 
-          {comp === 'prateleira' && (
+          {hasShelf && (
             <>
               <FieldWrap label="Cor da prateleira">
                 {/* existing shelfColorMode select */}
@@ -571,7 +634,7 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
               </FieldWrap>
             </>
           )}
-          {comp === 'prateleira' && (
+          {hasShelf && (
             <div className="mt-3 flex items-center justify-between text-sm">
               <span>
                 Altura da prateleira:{" "}
@@ -583,7 +646,8 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
                   const model = String(budget.modelKey || '').toLowerCase();
                   if (model) params.set('model', model);
 
-                  params.set('complemento', 'prateleira');
+                  const clean = comps.filter(c => c !== 'nenhum');
+                  if (clean.length) params.set('complemento', clean.join(','));
 
                   const shelfMode = form.getValues('shelfColorMode') || 'padrao';
                   params.set('shelfColorMode', shelfMode);
@@ -929,3 +993,64 @@ function Thumbs({ urls }:{ urls:string[] }) {
     </div>
   );
 }
+
+function ComplementoSelector({
+  value,
+  onChange,
+  options,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  options: CatItem[];
+}) {
+  const cleanValue = (value ?? []).filter(v => v !== 'nenhum');
+
+  const setNone = () => onChange([]);
+
+  const toggle = (c: string) => {
+    if (cleanValue.includes(c)) {
+      onChange(cleanValue.filter(v => v !== c));
+    } else {
+      onChange([...cleanValue, c]);
+    }
+  };
+
+  const noneActive = cleanValue.length === 0;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={setNone}
+        className={[
+          "px-3 py-1.5 rounded-full border text-sm transition",
+          noneActive
+            ? "bg-[#FFD200] border-[#FFD200] shadow-sm"
+            : "bg-white border-neutral-300 hover:bg-neutral-100"
+        ].join(" ")}
+      >
+        Nenhum
+      </button>
+
+      {options.map(opt => {
+        const active = cleanValue.includes(opt.value);
+        return (
+          <button
+            type="button"
+            key={opt.value}
+            onClick={() => toggle(opt.value)}
+            className={[
+              "px-3 py-1.5 rounded-full border text-sm transition",
+              active
+                ? "bg-[#FFD200] border-[#FFD200] shadow-sm"
+                : "bg-white border-neutral-300 hover:bg-neutral-100"
+            ].join(" ")}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+

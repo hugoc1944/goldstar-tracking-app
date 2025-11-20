@@ -32,8 +32,8 @@ const PatchBody = z.object({
   details: z.object({
     // SUMMARY FIELDS
     model: z.string().optional().nullable(),
-    complements: z.string().optional().nullable(),
-
+    complements: z.union([z.string(), z.array(z.string())]).optional().nullable(),
+    shelfHeightPct: z.number().int().min(20).max(100).optional().nullable(),
     // FULL CUSTOMIZATION KEYS (match Admin/Public forms)
     handleKey: z.string().optional().nullable(),
     finish: z.string().optional().nullable(),
@@ -362,20 +362,49 @@ if (body.delivery) {
       ...(body.details.visionSupport   !== undefined ? { visionSupport: body.details.visionSupport } : {}),
       ...(body.details.towelColorMode  !== undefined ? { towelColorMode: body.details.towelColorMode } : {}),
       ...(body.details.shelfColorMode  !== undefined ? { shelfColorMode: body.details.shelfColorMode } : {}),
+      ...(body.details.shelfHeightPct !== undefined
+        ? { shelfHeightPct: body.details.shelfHeightPct }
+        : {}),
     };
 
     // Normalize complements: if it's 'vision'/'toalheiro1'/'prateleira', store JSON with extra color modes
-    let nextComplements: string | null | undefined = body.details.complements ?? undefined;
+    const normalizeCompsInput = (raw: unknown): string | null | undefined => {
+      if (raw === undefined) return undefined;
+      if (raw === null) return null;
 
-    if (typeof nextComplements === 'string') {
-      // normalize "nenhum" to null if you don't want to persist the literal
-      nextComplements = nextComplements === 'nenhum' ? null : nextComplements;
-    } else if (nextComplements && typeof nextComplements === 'object') {
-      // if something upstream ever sends an object, fall back to its 'code'
-      nextComplements = (nextComplements as any).code ?? null;
-    } else {
-      nextComplements = null;
+      const list =
+        Array.isArray(raw)
+          ? raw.map(String)
+          : typeof raw === 'string'
+            ? raw.split(',')
+            : [];
+
+      const cleaned = list
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean)
+        .filter(c => c !== 'nenhum');
+
+      return cleaned.length ? cleaned.join(',') : null;
+    };
+
+    const nextComplements = normalizeCompsInput(body.details.complements);
+    const compsList =
+      typeof nextComplements === 'string'
+        ? nextComplements.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+        : [];
+
+    if (!compsList.includes('vision')) {
+      delete nextCustom.barColor;
+      delete nextCustom.visionSupport;
     }
+    if (!compsList.includes('toalheiro1')) {
+      delete nextCustom.towelColorMode;
+    }
+    if (!compsList.includes('prateleira')) {
+      delete nextCustom.shelfColorMode;
+      delete nextCustom.shelfHeightPct;
+    }
+
 
     await tx.orderItem.update({
     where: { id: detailItem.id },
@@ -458,27 +487,46 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       fixingBarMode:   (detailItem?.customizations as any)?.fixingBarMode ?? '',
       // complements (normalize)
       ...( (() => {
-          const raw = detailItem?.complements;
+        const raw = detailItem?.complements;
+
+        // legacy JSON case (old orders)
+        if (typeof raw === 'string' && raw.trim().startsWith('{')) {
           try {
-            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            const parsed = JSON.parse(raw);
+            const list = String(parsed?.code ?? '')
+              .split(',')
+              .map(s => s.trim().toLowerCase())
+              .filter(Boolean)
+              .filter(c => c !== 'nenhum');
+
             return {
-              complements:    parsed?.code ?? (typeof raw === 'string' ? raw : 'DIVERSOS'),
+              complements: list,
               barColor:       parsed?.barColor ?? (detailItem?.customizations as any)?.barColor ?? '',
               visionSupport:  parsed?.visionSupport ?? (detailItem?.customizations as any)?.visionSupport ?? '',
               towelColorMode: parsed?.towelColorMode ?? (detailItem?.customizations as any)?.towelColorMode ?? '',
               shelfColorMode: parsed?.shelfColorMode ?? (detailItem?.customizations as any)?.shelfColorMode ?? '',
+              shelfHeightPct: parsed?.shelfHeightPct ?? (detailItem?.customizations as any)?.shelfHeightPct ?? null,
             };
           } catch {
-            return {
-              complements:    typeof raw === 'string' ? raw : 'DIVERSOS',
-              barColor:       (detailItem?.customizations as any)?.barColor ?? '',
-              visionSupport:  (detailItem?.customizations as any)?.visionSupport ?? '',
-              towelColorMode: (detailItem?.customizations as any)?.towelColorMode ?? '',
-              shelfColorMode: (detailItem?.customizations as any)?.shelfColorMode ?? '',
-            };
+            /* fallthrough to comma-string case */
           }
-        })()
-      ),
+        }
+
+        // new comma-string case
+        const list =
+          typeof raw === 'string'
+            ? raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean).filter(c => c !== 'nenhum')
+            : [];
+
+        return {
+          complements: list,
+          barColor:       (detailItem?.customizations as any)?.barColor ?? '',
+          visionSupport:  (detailItem?.customizations as any)?.visionSupport ?? '',
+          towelColorMode: (detailItem?.customizations as any)?.towelColorMode ?? '',
+          shelfColorMode: (detailItem?.customizations as any)?.shelfColorMode ?? '',
+          shelfHeightPct: (detailItem?.customizations as any)?.shelfHeightPct ?? null,
+        };
+      })()),
     },
     files: (order.filesJson as any[]) ?? [],
     state: {                                   

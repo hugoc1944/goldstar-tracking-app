@@ -44,7 +44,7 @@ export const BudgetCreateSchema = z.object({
 
   fixingBarMode: FixBarModeEnum.optional(),  // only if model rule hasFixingBar
 
-  complemento: z.string().min(1),            // 'nenhum' | 'vision' | 'toalheiro1' | 'prateleira'
+  complementos: z.array(z.string()).default([]),
   launchBonus: z.enum(['shampooGOLDSTAR','gelGOLDSTAR']).default('shampooGOLDSTAR'),
 
   // legacy/extra toggles (optional)
@@ -89,7 +89,7 @@ export const BudgetCreateSchema = z.object({
   }
 
   // Vision-only requirements
-  if (val.complemento === 'vision') {
+  if (val.complementos.includes('vision')) {
     if (!val.barColor) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório com Vision.', path: ['barColor'] });
     }
@@ -99,14 +99,14 @@ export const BudgetCreateSchema = z.object({
   }
 
   // Toalheiro 1 requirement
-  if (val.complemento === 'toalheiro1') {
+  if (val.complementos.includes('toalheiro1')) {
     if (!val.towelColorMode) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório para Toalheiro 1.', path: ['towelColorMode'] });
     }
   }
 
   // Prateleira de Canto requirement
-  if (val.complemento === 'prateleira') {
+  if (val.complementos.includes('prateleira')) {
     if (!val.shelfColorMode) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório para Prateleira de Canto.', path: ['shelfColorMode'] });
     }

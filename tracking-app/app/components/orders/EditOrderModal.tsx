@@ -70,6 +70,18 @@ function simModelParamFromKey(input: string | undefined) {
   return v ? `${canonical}_V${v}` : canonical;
 }
 
+// normalize complements from API (string or array) to string[]
+const parseCompsInput = (raw: any): string[] => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map(String).map(s => s.trim().toLowerCase()).filter(Boolean).filter(c => c !== 'nenhum');
+  }
+  if (typeof raw === 'string') {
+    return raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean).filter(c => c !== 'nenhum');
+  }
+  return [];
+};
+
 export function EditOrderModal({
   order,
   onClose,
@@ -151,7 +163,7 @@ export function EditOrderModal({
     acrylic: order.details.acrylic ?? '',
     serigraphy: order.details.serigraphy ?? 'nenhum',
     serigrafiaColor: order.details.serigrafiaColor ?? '',
-    complements: order.details.complements ?? 'nenhum',
+    complements: parseCompsInput(order.details.complements),
     barColor: order.details.barColor ?? '',
     visionSupport: order.details.visionSupport ?? '',
     towelColorMode: order.details.towelColorMode ?? '',
@@ -160,6 +172,33 @@ export function EditOrderModal({
     shelfHeightPct: order.details.shelfHeightPct ?? null,  
 
   });
+
+  function toggleComplement(value: string) {
+  setDetails((d) => {
+    const set = new Set(d.complements);
+    if (set.has(value)) set.delete(value);
+    else set.add(value);
+
+    const list = [...set];
+    const next: any = { ...d, complements: list };
+
+    if (!list.includes('vision')) {
+      next.barColor = '';
+      next.visionSupport = '';
+    }
+    if (!list.includes('toalheiro1')) {
+      next.towelColorMode = '';
+    }
+    if (!list.includes('prateleira')) {
+      next.shelfColorMode = '';
+      next.shelfHeightPct = null;
+    } else if (next.shelfHeightPct == null) {
+      next.shelfHeightPct = 100;
+    }
+
+    return next;
+  });
+}
 
   // NEW: delivery local state (prefill if provided)
   const [delivery, setDelivery] = React.useState({
@@ -241,10 +280,32 @@ const simulatorUrl = React.useMemo(() => {
     params.set('handle', details.handleKey);
   }
 
-  // Complemento
-  if (details.complements && details.complements !== 'nenhum') {
-    params.set('complemento', details.complements);
+  const comps = details.complements ?? [];
+  if (comps.length) {
+    params.set('complementos', comps.join(','));
+    params.set('complemento', comps[0]); // legacy fallback
   }
+
+  // Vision
+  if (comps.includes('vision')) {
+    if (details.barColor) params.set('barColor', details.barColor);
+    if (details.visionSupport) params.set('visionSupport', details.visionSupport);
+  }
+
+  // Toalheiro 1
+  if (comps.includes('toalheiro1') && details.towelColorMode) {
+    params.set('towel', details.towelColorMode);
+  }
+
+  // Prateleira
+  if (comps.includes('prateleira')) {
+    if (details.shelfColorMode) params.set('shelf', details.shelfColorMode);
+    if (details.shelfHeightPct != null) {
+      params.set('altura', String(Math.round(details.shelfHeightPct)));
+    }
+  }
+
+
 
   // Barra de fixação
   if (showFixBar && details.fixingBarMode) {
@@ -263,28 +324,6 @@ const simulatorUrl = React.useMemo(() => {
       params.set('serigrafiaColor', details.serigrafiaColor);
     }
   }
-
-  // Vision
-  if (details.complements === 'vision') {
-    if (details.barColor) params.set('barColor', details.barColor);
-    if (details.visionSupport) params.set('visionSupport', details.visionSupport);
-  }
-
-  // Toalheiro 1
-  if (details.complements === 'toalheiro1' && details.towelColorMode) {
-    params.set('towel', details.towelColorMode);
-  }
-
-  // Prateleira de canto
-  if (details.complements === 'prateleira') {
-    if (details.shelfColorMode) {
-      params.set('shelf', details.shelfColorMode);
-    }
-    if (details.shelfHeightPct != null) {
-      params.set('altura', String(Math.round(details.shelfHeightPct)));
-    }
-  }
-
   return `https://simulador.mfn.pt/?${params.toString()}`;
 }, [simModelParam, details, hideHandles, showFixBar]);
 
@@ -310,6 +349,8 @@ const simulatorUrl = React.useMemo(() => {
 
   // ------- save -------
   const [saving, setSaving] = React.useState(false);
+  const comps = details.complements.length ? details.complements : null;
+
   async function submit() {
     setSaving(true);
     try {
@@ -338,13 +379,23 @@ const simulatorUrl = React.useMemo(() => {
             serigraphy: details.serigraphy || null,
             serigrafiaColor: details.serigraphy !== 'nenhum' ? (details.serigrafiaColor || 'padrao') : null,
 
-            complements: details.complements || null,
-            barColor: details.complements === 'vision' ? (details.barColor || null) : null,
-            visionSupport: details.complements === 'vision' ? (details.visionSupport || null) : null,
-            towelColorMode: details.complements === 'toalheiro1' ? (details.towelColorMode || null) : null,
-            shelfColorMode: details.complements === 'prateleira' ? (details.shelfColorMode || null) : null,
+              complements: comps,
+
+              barColor: comps?.includes('vision') ? (details.barColor || null) : null,
+              visionSupport: comps?.includes('vision') ? (details.visionSupport || null) : null,
+
+              towelColorMode: comps?.includes('toalheiro1')
+                ? (details.towelColorMode || null)
+                : null,
+
+              shelfColorMode: comps?.includes('prateleira')
+                ? (details.shelfColorMode || null)
+                : null,
+
+              shelfHeightPct: comps?.includes('prateleira')
+                ? (details.shelfHeightPct ?? null)
+                : null,
             fixingBarMode: showFixBar ? (details.fixingBarMode || null) : null,
-              shelfHeightPct: details.shelfHeightPct ?? null,
           },
           delivery: {
             deliveryType: delivery.deliveryType || null,
@@ -525,21 +576,27 @@ const simulatorUrl = React.useMemo(() => {
               )}
 
               {/* Complemento */}
-              <Select
-                label="Complemento *"
-                value={details.complements}
-                onChange={(v) => {
-                  const next = { ...details, complements: v };
-                  if (v !== 'vision') { next.barColor = ''; next.visionSupport = ''; }
-                  if (v !== 'toalheiro1') next.towelColorMode = '';
-                  if (v !== 'prateleira') next.shelfColorMode = '';
-                  setDetails(next);
-                }}
-                options={ensureSelected(complements, details.complements)}
-              />
+              <div className="space-y-2">
+                <label className="text-sm text-foreground">Complementos *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {complements.filter(o => o.value !== 'nenhum').map((o) => {
+                    const checked = details.complements.includes(o.value);
+                    return (
+                      <label key={o.value} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleComplement(o.value)}
+                        />
+                        <span>{o.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Vision-only */}
-              {details.complements === 'vision' && (
+              {details.complements.includes('vision') && (
                 <>
                   <Select
                     label="Cor da Barra Vision *"
@@ -557,7 +614,7 @@ const simulatorUrl = React.useMemo(() => {
               )}
 
               {/* Toalheiro 1 */}
-              {allowTowel1 && details.complements === 'toalheiro1' && (
+              {allowTowel1 && details.complements.includes('toalheiro1') && (
                 <Select
                   label="Cor do toalheiro *"
                   value={details.towelColorMode}
@@ -569,11 +626,10 @@ const simulatorUrl = React.useMemo(() => {
                 />
               )}
 
-              {/* Prateleira de canto */}
-              {details.complements === 'prateleira' && (
+              {details.complements.includes('prateleira') && (
                 <>
                   <Select
-                    label="Cor do suporte *"
+                    label="Cor do suporte Prateleira *"
                     value={details.shelfColorMode}
                     onChange={(v) => setDetails({ ...details, shelfColorMode: v })}
                     options={[
@@ -582,11 +638,26 @@ const simulatorUrl = React.useMemo(() => {
                     ]}
                   />
 
-                  {details.shelfHeightPct != null && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Altura da prateleira: {details.shelfHeightPct}%
-                    </p>
-                  )}
+                  {/* slider like budgets */}
+                  <div className="space-y-1">
+                    <label className="text-sm text-foreground">
+                      Altura da prateleira ({details.shelfHeightPct ?? 100}%)
+                    </label>
+                    <input
+                      type="range"
+                      min={20}
+                      max={100}
+                      step={1}
+                      value={details.shelfHeightPct ?? 100}
+                      onChange={(e) =>
+                        setDetails({
+                          ...details,
+                          shelfHeightPct: Number(e.target.value),
+                        })
+                      }
+                      className="w-full"
+                    />
+                  </div>
                 </>
               )}
 

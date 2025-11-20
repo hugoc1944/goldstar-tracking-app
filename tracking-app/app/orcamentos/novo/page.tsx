@@ -191,8 +191,48 @@ function toPascalNoSep(input: string) {
     .join('');
 }
 
+
+const FINISH_FILE_MAP: Record<string, string> = {
+  amarelo: "Amarelo",
+  anodizado: "Anodizado",
+  azulclaro: "AzulClaro",
+  azulescuro: "AzulEscuro",
+  azulturquesa: "AzulTurquesa",
+  bordeaux: "Bordeaux",
+  branco: "Branco",
+  brancomate: "BrancoMate",
+  castanho: "Castanho",
+  cinza: "Cinza",
+  cremelclaro: "CremeClaro",
+  cremeclaro: "CremeClaro",
+  cremeescuro: "CremeEscuro",
+  cromado: "Cromado",
+  dourado: "Dourado",
+  gunmetal: "GunMetal",
+  preto: "Preto",
+  pretomate: "PretoMate",
+  pretofosco: "PretoFosco",
+  rosa: "Rosa",
+  verdeagua: "VerdeAgua",
+  verdefloresta: "VerdeFloresta",
+  vermelho: "Vermelho",
+};
+
+
+
+
 // - acabamentos
-const finishIconSrc = (name: string) => `${PRE}/finishes/${toPascalNoSep(name)}.png`;
+const finishIconSrc = (name: string) => {
+  const key = name
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[\s_-]/g, '');
+
+  const stem = FINISH_FILE_MAP[key];
+  if (!stem) return undefined;
+
+  return `${PRE}/finishes/${stem}.png`;
+};
 
 // - puxadores (catálogo usa p.ex. h1..h7/sem); simulador usa Handle_1..8 e none/default
 function handleIconSrc(value?: string) {
@@ -635,7 +675,7 @@ export const PublicBudgetSchema = z.object({
   serigrafiaColor: z.string().optional(),
   fixingBarMode: FixBarModeEnum.optional(),
 
-  complemento: z.string().min(1),
+  complementos: z.array(z.string()).default([]),
   launchBonus: z.enum(['shampooGOLDSTAR','gelGOLDSTAR']).default('shampooGOLDSTAR'),
 
   // legacy/unused in this public form, keep if you want:
@@ -683,7 +723,7 @@ export const PublicBudgetSchema = z.object({
 }
 
   // Vision-only required fields
-  if (val.complemento === 'vision') {
+  if (val.complementos.includes('vision')) {
     if (!val.barColor) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório com Vision.', path: ['barColor'] });
     }
@@ -691,12 +731,14 @@ export const PublicBudgetSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório com Vision.', path: ['visionSupport'] });
     }
   }
-   if (val.complemento === 'toalheiro1') {
+
+  if (val.complementos.includes('toalheiro1')) {
     if (!val.towelColorMode) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório para Toalheiro 1.', path: ['towelColorMode'] });
     }
   }
-  if (val.complemento === 'prateleira') {
+
+  if (val.complementos.includes('prateleira')) {
     if (!val.shelfColorMode) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório para Prateleira de Canto.', path: ['shelfColorMode'] });
     }
@@ -738,6 +780,96 @@ function hideDepthForModel(key?: string) {
   return HIDE_DEPTH_MODELS.has(k);
 }
 
+function ComplementoSelector({
+  value,
+  onChange,
+  options,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  options: CatItem[];
+}) {
+  // Normalize: never keep "nenhum" inside the stored array
+  const selected = (value ?? []).map(v => v.toLowerCase()).filter(v => v && v !== 'nenhum');
+  const noneActive = selected.length === 0;
+
+  // ensure "Nenhum" shows first even if catalog order changes
+  const orderedOptions = React.useMemo(() => {
+    const arr = [...options];
+    arr.sort((a, b) => {
+      const av = a.value.toLowerCase();
+      const bv = b.value.toLowerCase();
+      if (av === 'nenhum') return -1;
+      if (bv === 'nenhum') return 1;
+      return 0;
+    });
+    return arr;
+  }, [options]);
+
+  const setNone = () => onChange([]);
+
+  const toggle = (raw: string) => {
+    const c = raw.toLowerCase();
+
+    // clicking "Nenhum" clears everything
+    if (c === 'nenhum') {
+      setNone();
+      return;
+    }
+
+    const has = selected.includes(c);
+
+    if (has) {
+      const next = selected.filter(v => v !== c);
+      onChange(next);          // if next becomes [], Nenhum auto-activates
+    } else {
+      onChange([...selected, c]); // add complement, Nenhum auto-deactivates
+    }
+  };
+
+  const baseCls =
+    "group inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium " +
+    "transition-all border shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD200]/60";
+
+  const activeCls =
+    "bg-[#FFD200]/20 border-[#FFD200] text-[#122C4F] " +
+    "shadow-[0_0_0_2px_rgba(255,210,0,0.35)]";
+
+  const inactiveCls =
+    "bg-white border-neutral-300 text-neutral-800 hover:bg-neutral-50 hover:border-neutral-400";
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {orderedOptions.map(opt => {
+        const val = opt.value.toLowerCase();
+        const isNone = val === 'nenhum';
+        const active = isNone ? noneActive : selected.includes(val);
+
+        const iconSrc = !isNone ? complementoIconSrc(val) : '';
+
+        return (
+          <button
+            type="button"
+            key={opt.value}
+            onClick={() => toggle(opt.value)}
+            aria-pressed={active}
+            className={`${baseCls} ${active ? activeCls : inactiveCls}`}
+          >
+            {!isNone && (
+              <TinyIcon
+                src={iconSrc}
+                alt=""
+                size={18}
+              />
+            )}
+            <span className="whitespace-nowrap">{opt.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function BudgetFormPageInner() {
   const search = useSearchParams();
   const router = useRouter();
@@ -763,7 +895,11 @@ export function BudgetFormPageInner() {
       acrylicKey: search.get('acrylic') ?? 'nenhum',
       serigrafiaKey: search.get('serigrafia') ?? 'nenhum',
       serigrafiaColor: undefined,
-      complemento: search.get('complemento') ?? 'nenhum',
+      complementos: (() => {
+        const raw = search.get('complemento');
+        if (!raw) return [];
+        return raw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+      })(),
       launchBonus: ((): 'shampooGOLDSTAR' | 'gelGOLDSTAR' => {
         const b = (search.get('bonus') ?? '').toLowerCase();
         if (['gel','gelgoldstar','gel_de_banho','gelbanho'].includes(b)) return 'gelGOLDSTAR';
@@ -881,9 +1017,28 @@ React.useEffect(() => {
     // Map each URL param → catalog option (by value or label)
     setIf('finishKey',     matchOption(finishesByRule, search.get('finish')));
     setIf('glassTypeKey',  matchOption(glassAll,       search.get('glass')));
-    setIf('complemento',   matchOption(compAll,        search.get('complemento')));
     setIf('handleKey',     matchOption(handleAll,      search.get('handle')));
+  // Complementos (URL → catálogo), aceita complemento=vision,toalheiro1...
+  const rawComps =
+    search.get('complemento') ??
+    search.get('complementos') ??
+    '';
 
+  if (rawComps) {
+    const mapped = rawComps
+      .split(',')
+      .map(s => s.trim())
+      .map(s => matchOption(compAll, s))
+      .filter(Boolean) as string[];
+
+    if (mapped.length) {
+      form.setValue(
+        'complementos',
+        Array.from(new Set(mapped)),
+        { shouldDirty: false }
+      );
+    }
+  }
     // Vision extras
   const barRaw = search.get('barColor') ?? search.get('visionBar') ?? search.get('bar');
   const barMatched = resolveVisionBarColor(barRaw, barColorsAll);
@@ -1034,6 +1189,11 @@ if (rawSer) {
     const rm = new Set(rule.removeFinishes.map(v => v.toLowerCase()));
     return all.filter(f => !rm.has(f.value.toLowerCase()));
   }, [catalog, rule]);
+
+  const finishesNoAnod = React.useMemo(() => {
+    return finishes.filter(f => f.value.toLowerCase() !== 'anodizado');
+  }, [finishes]);
+
   const finishesNoChromeAnod = React.useMemo(() => {
     return finishes.filter(f => {
       const v = f.value.toLowerCase();
@@ -1103,25 +1263,31 @@ React.useEffect(() => {
 }, [finishes, glassTipos, monos]);
 
 // 2) When complemento requires extra choices, pick defaults
-  const comp = form.watch('complemento');
-const shelfHeightPct = form.watch('shelfHeightPct') ?? 100;
+  const comps = form.watch('complementos') ?? [];
+  const shelfHeightPct = form.watch('shelfHeightPct') ?? 100;
 
 React.useEffect(() => {
-  if (comp === 'vision') {
-    if (!form.getValues('barColor') && (barColors?.length ?? 0) > 0) {
-      form.setValue('barColor', barColors![0].value, { shouldDirty: false });
-    }
-    if (!form.getValues('visionSupport') && finishes.length) {
-      form.setValue('visionSupport', finishes[0].value, { shouldDirty: false });
-    }
+  if (comps.includes('vision')) {
+  if (!form.getValues('barColor') && (barColors?.length ?? 0) > 0) {
+    form.setValue('barColor', barColors![0].value, { shouldDirty: false });
   }
-  if (comp === 'toalheiro1' && !form.getValues('towelColorMode')) {
+
+  if (!form.getValues('visionSupport') && finishesNoAnod.length) {
+    const cromado =
+      finishesNoAnod.find(f => f.value.toLowerCase() === 'cromado')?.value;
+
+    form.setValue('visionSupport', cromado ?? finishesNoAnod[0].value, {
+      shouldDirty: false,
+    });
+  }
+}
+  if (comps.includes('toalheiro1') && !form.getValues('towelColorMode')) {
     form.setValue('towelColorMode', 'padrao', { shouldDirty: false });
   }
-  if (comp === 'prateleira' && !form.getValues('shelfColorMode')) {
+  if (comps.includes('prateleira') && !form.getValues('shelfColorMode')) {
     form.setValue('shelfColorMode', 'padrao', { shouldDirty: false });
   }
-}, [comp, barColors, finishes]);
+}, [comps, barColors, finishes, finishesNoAnod]);
   
   async function onUploadFiles(ev: React.ChangeEvent<HTMLInputElement>) {
     const files = ev.target.files;
@@ -1195,32 +1361,41 @@ React.useEffect(() => {
 
 
 React.useEffect(() => {
-  if (comp !== 'vision') {
-    form.setValue('barColor', undefined, { shouldDirty:true });
-    form.setValue('visionSupport', undefined, { shouldDirty:true });
-  }
-  if (comp !== 'toalheiro1') {
-    form.setValue('towelColorMode', undefined, { shouldDirty:true });
+  if (!comps.includes('vision')) {
+    if (form.getValues('barColor') != null)
+      form.setValue('barColor', undefined, { shouldDirty: true });
+    if (form.getValues('visionSupport') != null)
+      form.setValue('visionSupport', undefined, { shouldDirty: true });
   }
 
-  if (comp !== 'prateleira') {
-    // leaving Prateleira → clear color + altura
-    form.setValue('shelfColorMode', undefined, { shouldDirty:true });
-    form.setValue('shelfHeightPct', undefined, { shouldDirty:true });
-  } else {
-    // entering Prateleira with no height yet → set sensible default
-    if (form.getValues('shelfHeightPct') == null) {
-      form.setValue('shelfHeightPct', 100, { shouldDirty:true }); // or 100 if you prefer
-    }
+  if (!comps.includes('toalheiro1')) {
+    if (form.getValues('towelColorMode') != null)
+      form.setValue('towelColorMode', undefined, { shouldDirty: true });
   }
-}, [comp]);
+
+  if (!comps.includes('prateleira')) {
+    if (form.getValues('shelfColorMode') != null)
+      form.setValue('shelfColorMode', undefined, { shouldDirty: true });
+    if (form.getValues('shelfHeightPct') != null)
+      form.setValue('shelfHeightPct', undefined, { shouldDirty: true });
+  } else if (form.getValues('shelfHeightPct') == null) {
+    form.setValue('shelfHeightPct', 100, { shouldDirty: true });
+  }
+}, [comps, form]);
   // If model is not Strong/Painel, force-remove "toalheiro1"
 React.useEffect(() => {
-  if (!showToalheiro1 && form.getValues('complemento') === 'toalheiro1') {
-    form.setValue('complemento', 'nenhum', { shouldDirty: true });
-    form.setValue('towelColorMode', undefined, { shouldDirty: true });
+  if (!showToalheiro1) {
+    const curr = form.getValues('complementos') ?? [];
+    if (curr.includes('toalheiro1')) {
+      form.setValue(
+        'complementos',
+        curr.filter(c => c !== 'toalheiro1'),
+        { shouldDirty: true }
+      );
+      form.setValue('towelColorMode', undefined, { shouldDirty: true });
+    }
   }
-}, [showToalheiro1]);
+}, [showToalheiro1, form]);
 
     const selSer = form.watch('serigrafiaKey');
     React.useEffect(() => {
@@ -1475,8 +1650,11 @@ React.useEffect(() => {
     }
 
     // Complemento
-    if (values.complemento && values.complemento !== 'nenhum') {
-      params.set('complemento', values.complemento);
+    if (values.complementos?.length) {
+      const clean = values.complementos.filter(c => c !== 'nenhum');
+      if (clean.length > 0) {
+        params.set('complemento', clean.join(','));
+      }
     }
 
     // Barra de fixação
@@ -1502,18 +1680,18 @@ React.useEffect(() => {
     }
 
     // Vision
-    if (values.complemento === 'vision') {
-      if (values.barColor) params.set('barColor', values.barColor);
-      if (values.visionSupport) params.set('visionSupport', values.visionSupport);
-    }
+  if (comps.includes('vision')) {
+    if (values.barColor) params.set('barColor', values.barColor);
+    if (values.visionSupport) params.set('visionSupport', values.visionSupport);
+  }
 
     // Toalheiro 1
-    if (values.complemento === 'toalheiro1' && values.towelColorMode) {
+    if (comps.includes('toalheiro1') && values.towelColorMode) {
       params.set('towel', values.towelColorMode); // accepted alias in simulator
     }
 
     // Prateleira de Canto
-    if (values.complemento === 'prateleira') {
+    if (comps.includes('prateleira')) {
       if (values.shelfColorMode) {
         params.set('shelf', values.shelfColorMode); // shelfColorMode
       }
@@ -1711,24 +1889,21 @@ React.useEffect(() => {
                 </FieldWrap>
               )}
 
-              <FieldWrap label="Complemento *" error={form.formState.errors?.['complemento']?.message as string | undefined}>
+              <FieldWrap label="Complementos">
                 <Controller
-                  name="complemento"
+                  name="complementos"
                   control={form.control}
                   render={({ field }) => (
-                    <IconSelect
-                      value={field.value}
-                      onChange={field.onChange}
-                      options={complementoFiltered}   // ← was `complemento`
-                      getIcon={(opt) => complementoIconSrc(opt.value)}
-                      iconSize={36}
-                      itemIconSize={48}
+                    <ComplementoSelector
+                      value={field.value || []}
+                      onChange={(v) => field.onChange(v)}
+                      options={complementoFiltered}
                     />
                   )}
                 />
               </FieldWrap>
 
-              {comp === 'vision' && (
+              {comps.includes('vision') && (
                 <>
                   < FieldWrap label="Cor da Barra Vision *" >
                     <Controller
@@ -1746,7 +1921,7 @@ React.useEffect(() => {
                       )}
                     />
                   </FieldWrap>
-                  <FieldWrap label="Cor de Suporte *">
+                  <FieldWrap label="Cor do suporte Vision *">
                     <Controller
                       name="visionSupport"
                       control={form.control}
@@ -1754,7 +1929,7 @@ React.useEffect(() => {
                         <IconSelect
                           value={field.value}
                           onChange={field.onChange}
-                          options={finishes}
+                          options={finishesNoAnod}
                           getIcon={(opt) => finishIconSrc(opt.value)}
                           iconSize={36}
                           itemIconSize={48}
@@ -1765,7 +1940,7 @@ React.useEffect(() => {
                 </>
               )}
 
-              {comp === 'toalheiro1' && (
+              {comps.includes('toalheiro1') && (
                 <FieldWrap label="Cor do toalheiro *" error={form.formState.errors?.['towelColorMode']?.message as string | undefined}>
                   <Controller
                     name="towelColorMode"
@@ -1786,10 +1961,10 @@ React.useEffect(() => {
                 </FieldWrap>
               )}
 
-              {comp === 'prateleira' && (
+              {comps.includes('prateleira') && (
                 <>
                   <FieldWrap
-                    label="Cor do suporte *"
+                    label="Cor do suporte Prateleira *"
                     error={form.formState.errors?.['shelfColorMode']?.message as string | undefined}
                   >
                     <Controller

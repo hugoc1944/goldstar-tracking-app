@@ -95,7 +95,7 @@ export function NewOrderClient() {
     acrylic: '',
     serigraphy: 'nenhum',
     serigrafiaColor: '',
-    complements: 'nenhum',
+    complements: [] as string[],
     barColor: '',
     visionSupport: '',
     towelColorMode: '',
@@ -171,6 +171,10 @@ export function NewOrderClient() {
   const showFixBar  = !!rule?.hasFixingBar;
   const allowTowel1 = !!rule?.allowTowel1;
 
+  const comps = details.complements;
+  const hasVision = comps.includes('vision');
+  const hasTowel1 = comps.includes('toalheiro1');
+  const hasShelf  = comps.includes('prateleira');
   /* ---------- First-time sensible defaults ---------- */
   useEffect(() => {
     if (!catalog) return;
@@ -191,7 +195,7 @@ export function NewOrderClient() {
         finish: d.finish || firstFinish,
         glassTypeKey: d.glassTypeKey || glassFirst,
         acrylic: showAcrylic ? (d.acrylic || (catalog.ACRYLIC_AND_POLICARBONATE?.[0]?.value ?? '')) : '',
-        complements: d.complements || (catalog.COMPLEMENTO?.[0]?.value ?? 'nenhum'),
+        complements: d.complements.length ? d.complements : [],
       };
     });
   }, [catalog, rule, showAcrylic]);
@@ -299,12 +303,11 @@ const [delivery, setDelivery] = useState({
           serigraphy: details.serigraphy,
           serigrafiaColor: details.serigraphy !== 'nenhum' ? (details.serigrafiaColor || 'padrao') : undefined,
 
-          complements: details.complements,
-          barColor:       details.complements === 'vision'     ? (details.barColor || undefined) : undefined,
-          visionSupport:  details.complements === 'vision'     ? (details.visionSupport || undefined) : undefined,
-          towelColorMode: details.complements === 'toalheiro1' ? (details.towelColorMode || undefined) : undefined,
-          shelfColorMode: details.complements === 'prateleira' ? (details.shelfColorMode || undefined) : undefined,
-          fixingBarMode:  showFixBar ? (details.fixingBarMode || undefined) : undefined,
+          complements: comps.length ? comps : undefined,
+          barColor:       hasVision ? (details.barColor || undefined) : undefined,
+          visionSupport:  hasVision ? (details.visionSupport || undefined) : undefined,
+          towelColorMode: hasTowel1 ? (details.towelColorMode || undefined) : undefined,
+          shelfColorMode: hasShelf  ? (details.shelfColorMode || undefined) : undefined,
 
           // NEW:
           delivery: {
@@ -507,30 +510,42 @@ const [delivery, setDelivery] = useState({
 
           {/* Complemento */}
           <div>
-            <label className="block text-sm mb-1">Complemento *</label>
-            <select
-              className="w-full border rounded px-3 py-2"
-              value={details.complements}
-              onChange={(e) => {
-                const v = e.target.value;
-                setDetails((d) => ({
-                  ...d,
-                  complements: v,
-                  barColor:       v === 'vision'     ? d.barColor       : '',
-                  visionSupport:  v === 'vision'     ? d.visionSupport  : '',
-                  towelColorMode: v === 'toalheiro1' ? d.towelColorMode : '',
-                  shelfColorMode: v === 'prateleira' ? d.shelfColorMode : '',
-                }));
-              }}
-            >
-              {ensureSelectedWithLabel(complements, details.complements).map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+  <label className="block text-sm mb-1">Complementos *</label>
+  <div className="space-y-2 rounded border border-gray-200 p-3">
+    {complements.filter(o => o.value !== 'nenhum').map((o) => {
+      const checked = comps.includes(o.value);
+      return (
+        <label key={o.value} className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => {
+              const next = e.target.checked
+                ? [...comps, o.value]
+                : comps.filter(v => v !== o.value);
+
+              setDetails((d) => ({
+                ...d,
+                complements: next,
+                ...(o.value === 'vision'     && !e.target.checked ? { barColor:'', visionSupport:'' } : {}),
+                ...(o.value === 'toalheiro1' && !e.target.checked ? { towelColorMode:'' } : {}),
+                ...(o.value === 'prateleira'&& !e.target.checked ? { shelfColorMode:'' } : {}),
+              }));
+            }}
+          />
+          {o.label}
+        </label>
+      );
+    })}
+
+    {comps.length === 0 && (
+      <div className="text-xs text-slate-500">Nenhum complemento selecionado.</div>
+    )}
+  </div>
           </div>
 
           {/* Vision-only */}
-          {details.complements === 'vision' && (
+          {hasVision && (
             <>
               <div>
                 <label className="block text-sm mb-1">Cor da Barra Vision *</label>
@@ -560,7 +575,7 @@ const [delivery, setDelivery] = useState({
           )}
 
           {/* Toalheiro 1 */}
-          {allowTowel1 && details.complements === 'toalheiro1' && (
+          {allowTowel1 && hasTowel1 && (
             <div>
               <label className="block text-sm mb-1">Cor do toalheiro *</label>
               <select
@@ -575,7 +590,7 @@ const [delivery, setDelivery] = useState({
           )}
 
           {/* Prateleira de Canto */}
-          {details.complements === 'prateleira' && (
+          {hasShelf && (
             <div>
               <label className="block text-sm mb-1">Cor do suporte *</label>
               <select

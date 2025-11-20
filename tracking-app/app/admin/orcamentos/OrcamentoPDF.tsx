@@ -14,24 +14,72 @@ function humanModel(key?: string | null) {
   const base = titleCase(k.replace(/_v\d+$/, ''));
   return m ? `${base} Variação ${m[1]}` : base;
 }
+
 function humanHandle(v?: string | null) {
   if (!v) return '-';
   const m = String(v).match(/^h(\d)$/i);
   return m ? `Puxador ${m[1]}` : titleCase(String(v));
 }
-function humanComplemento(v?: string | null) {
-  if (!v) return '-';
+
+/** Normalize complementos from:
+ *  - b.complementos: string[] (new)
+ *  - b.complemento: string (legacy)
+ *  - csv string
+ */
+function normalizeComplementos(raw?: string[] | string | null): string[] {
+  const list =
+    Array.isArray(raw) ? raw :
+    typeof raw === 'string' ? raw.split(',') :
+    [];
+
+  return list
+    .map(s => String(s).trim().toLowerCase())
+    .filter(Boolean)
+    .filter(c => c !== 'nenhum');
+}
+
+function humanComplementos(v?: string[] | string | null) {
   const map: Record<string, string> = {
     vision: 'Vision',
     toalheiro1: 'Toalheiro 1',
     prateleira: 'Prateleira (canto)',
-    nenhum: 'Nenhum',
   };
-  const k = String(v).toLowerCase();
-  return map[k] ?? titleCase(k);
+
+  const cleaned = normalizeComplementos(v);
+  if (!cleaned.length) return 'Nenhum';
+  return cleaned.map(c => map[c] ?? titleCase(c)).join(', ');
 }
-const eur = (c?: number) => (typeof c === 'number' ? (c / 100).toFixed(2) + ' €' : '-');
-const mmToCm = (mm?: number) => (typeof mm === 'number' ? `${Math.round(mm / 10)} cm` : '-');
+
+function humanTowelColorMode(v?: string | null) {
+  if (!v) return '-';
+  const k = String(v).toLowerCase();
+  if (k === 'padrao') return 'Padrão (Cromado)';
+  if (k === 'acabamento') return 'Cor do Acabamento';
+  return titleCase(k);
+}
+
+function humanShelfColorMode(v?: string | null) {
+  if (!v) return '-';
+  const k = String(v).toLowerCase();
+  if (k === 'padrao') return 'Padrão';
+  if (k === 'acabamento') return 'Cor do Acabamento';
+  return titleCase(k);
+}
+
+function humanCornerChoice(v?: string | null) {
+  if (!v) return '-';
+  const k = String(v).toLowerCase();
+  if (k === 'corner1' || k === 'canto1') return 'Canto 1';
+  if (k === 'corner2' || k === 'canto2') return 'Canto 2';
+  if (k === 'none' || k === 'nenhum') return '-';
+  return titleCase(k);
+}
+
+const eur = (c?: number) =>
+  (typeof c === 'number' ? (c / 100).toFixed(2) + ' €' : '-');
+
+const mmToCm = (mm?: number) =>
+  (typeof mm === 'number' ? `${Math.round(mm / 10)} cm` : '-');
 
 const bonusNiceLabel = (v?: string) =>
   v === 'gelGOLDSTAR' ? 'Gel de Banho GOLDSTAR'
@@ -55,7 +103,7 @@ function toPublicGlass(raw?: string | null) {
   if (k === 'mono_visiosun' || k === 'visiosun' || k === 'uv')     return 'visiosun';
   if (k === 'mono_flutes' || k === 'flutes' || k === 'canelado' || k === 'canalete') return 'canelado';
 
-  // fallback: pass through
+  // fallback
   return k;
 }
 
@@ -68,60 +116,55 @@ function buildSimUrlFromBudget(b: any) {
   const q = new URLSearchParams();
 
   // Model & core look
-  if (b.modelKey)       q.set('model', String(b.modelKey));         // e.g. DiplomataGold_V3
-  if (b.finishKey)      q.set('finish', String(b.finishKey));       // e.g. Cromado / PretoMate
-  if (b.handleKey)      q.set('handle', String(b.handleKey));       // h1..h12 | sem
+  if (b.modelKey)  q.set('model', String(b.modelKey));
+  if (b.finishKey) q.set('finish', String(b.finishKey));
+  if (b.handleKey) q.set('handle', String(b.handleKey));
 
   // Glass / acrylic
-  if (b.glassTypeKey)   q.set('glass', toPublicGlass(b.glassTypeKey));
-  // clear|frosted_matte|mono_...
+  if (b.glassTypeKey) q.set('glass', toPublicGlass(b.glassTypeKey));
   if (b.acrylicKey && b.acrylicKey !== 'nenhum') {
-    q.set('acrylic', String(b.acrylicKey));                         // e.g. poly_clear / poly_white
+    q.set('acrylic', String(b.acrylicKey));
   }
 
-  // Serigrafia (pattern) + independent ink color
+  // Serigrafia
   if (b.serigrafiaKey && b.serigrafiaKey !== 'nenhum') {
-    q.set('serigrafia', String(b.serigrafiaKey));                   // SER### | Quadro1.. | Elo1.. | Sereno
-    if (b.serigrafiaColor) q.set('serCor', String(b.serigrafiaColor)); // padrao | acabamento
+    q.set('serigrafia', String(b.serigrafiaKey));
+    if (b.serigrafiaColor) q.set('serCor', String(b.serigrafiaColor));
   }
 
-  // Fixing bar (“barra de fixação”) - only two modes
+  // Fixing bar
   if (b.fixingBarMode) {
-    // padrao | acabamento  (viewer maps → 'default' | 'finish')
-    q.set('fixingBarMode', String(b.fixingBarMode));
+    q.set('fixingBarMode', String(b.fixingBarMode)); // padrao|acabamento
   }
 
-  // Complementos
-  if (b.complemento) {
-    const comp = String(b.complemento); // vision | toalheiro1 | prateleira | nenhum
-    q.set('complemento', comp);
+  // ✅ Complementos (multi)
+  const comps = normalizeComplementos(b.complementos ?? b.complemento);
+  if (comps.length) {
+    // new param (plural) for latest simulator
+    q.set('complementos', comps.join(','));
 
-    if (comp === 'vision') {
-      if (b.barColor)      q.set('barColor', String(b.barColor));         // glass|white|black
-      if (b.visionSupport) q.set('visionSupport', String(b.visionSupport)); // finish literal
-    } else {
-      // avoid stale params in URL
-      q.delete('barColor');
-      q.delete('visionSupport');
+    // backward compatibility: keep first as singular token too
+    q.set('complemento', comps.join(','));
+
+    if (comps.includes('vision')) {
+      if (b.barColor) q.set('barColor', String(b.barColor));
+      if (b.visionSupport) q.set('visionSupport', String(b.visionSupport));
     }
 
-    if (comp === 'toalheiro1') {
-      if (b.towelColorMode) q.set('towel', String(b.towelColorMode));     // padrao|acabamento
-    } else {
-      q.delete('towel');
+    if (comps.includes('toalheiro1')) {
+      if (b.towelColorMode) q.set('towel', String(b.towelColorMode));
     }
 
-    if (comp === 'prateleira') {
-      if (b.shelfColorMode) q.set('shelf', String(b.shelfColorMode));     // padrao|acabamento
-      // corner selection (if you capture this in the budget)
-      if (b.cornerChoice) q.set('corner', String(b.cornerChoice));        // corner1|corner2|none (supports "canto1/2")
-    } else {
-      q.delete('shelf');
-      q.delete('corner');
+    if (comps.includes('prateleira')) {
+      if (b.shelfColorMode) q.set('shelf', String(b.shelfColorMode));
+      if (typeof b.shelfHeightPct === 'number') {
+        q.set('altura', String(Math.round(b.shelfHeightPct)));
+      }
+      if (b.cornerChoice) q.set('corner', String(b.cornerChoice));
     }
   }
 
-  // Optional: compact/locked chrome (the simulator can read this to hide side panels)
+  // Optional: compact/locked chrome
   q.set('compact', '1');
 
   return `${base}/?${q.toString()}`;
@@ -130,7 +173,6 @@ function buildSimUrlFromBudget(b: any) {
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 11, color: '#111' },
 
-  // Header
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   logo: { height: 36, marginTop: -2 },
   topRight: { alignItems: 'flex-end' },
@@ -156,7 +198,6 @@ const styles = StyleSheet.create({
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   grand: { marginTop: 8, textAlign: 'right', fontSize: 12, fontWeight: 700 },
 
-  // Button under Valores
   simWrap: { marginTop: 8, textAlign: 'center' },
   simBtn: {
     fontSize: 10,
@@ -186,6 +227,8 @@ export function OrcamentoPDF({ b }: { b: any }) {
     b.deliveryType === 'entrega_instalacao' || b.deliveryType === 'instalacao'
       ? 'Entrega + Instalação'
       : 'Entrega';
+
+  const comps = normalizeComplementos(b.complementos ?? b.complemento);
 
   return (
     <Document>
@@ -219,15 +262,50 @@ export function OrcamentoPDF({ b }: { b: any }) {
             <View style={styles.row}><Text style={styles.label}>Puxador</Text><Text style={styles.value}>{humanHandle(b.handleKey)}</Text></View>
             <View style={styles.row}><Text style={styles.label}>Acabamento</Text><Text style={styles.value}>{titleCase(String(b.finishKey ?? '-'))}</Text></View>
             <View style={styles.row}><Text style={styles.label}>Vidro / Monocromático</Text><Text style={styles.value}>{titleCase(String(b.glassTypeKey ?? '-'))}</Text></View>
-            <View style={styles.row}><Text style={styles.label}>Complemento</Text><Text style={styles.value}>{humanComplemento(b.complemento)}</Text></View>
 
-            {b.complemento === 'vision' && (
+            {/* ✅ Complementos list */}
+            <View style={styles.row}><Text style={styles.label}>Complementos</Text><Text style={styles.value}>{humanComplementos(comps)}</Text></View>
+
+            {/* ✅ Vision */}
+            {comps.includes('vision') && (
               <>
                 {b.barColor ? (
-                  <View style={styles.row}><Text style={styles.label}>Vision - Barra</Text><Text style={styles.value}>{titleCase(b.barColor)}</Text></View>
+                  <View style={styles.row}><Text style={styles.label}>Vision — Barra</Text><Text style={styles.value}>{titleCase(b.barColor)}</Text></View>
                 ) : null}
                 {b.visionSupport ? (
-                  <View style={styles.row}><Text style={styles.label}>Vision - Suporte</Text><Text style={styles.value}>{titleCase(b.visionSupport)}</Text></View>
+                  <View style={styles.row}><Text style={styles.label}>Vision — Suporte</Text><Text style={styles.value}>{titleCase(b.visionSupport)}</Text></View>
+                ) : null}
+              </>
+            )}
+
+            {/* ✅ Toalheiro 1 */}
+            {comps.includes('toalheiro1') && (
+              <View style={styles.row}>
+                <Text style={styles.label}>Toalheiro — Cor</Text>
+                <Text style={styles.value}>{humanTowelColorMode(b.towelColorMode)}</Text>
+              </View>
+            )}
+
+            {/* ✅ Prateleira */}
+            {comps.includes('prateleira') && (
+              <>
+                <View style={styles.row}>
+                  <Text style={styles.label}>Prateleira — Cor do suporte</Text>
+                  <Text style={styles.value}>{humanShelfColorMode(b.shelfColorMode)}</Text>
+                </View>
+
+                {typeof b.shelfHeightPct === 'number' ? (
+                  <View style={styles.row}>
+                    <Text style={styles.label}>Prateleira — Altura</Text>
+                    <Text style={styles.value}>{Math.round(b.shelfHeightPct)}%</Text>
+                  </View>
+                ) : null}
+
+                {b.cornerChoice ? (
+                  <View style={styles.row}>
+                    <Text style={styles.label}>Prateleira — Canto</Text>
+                    <Text style={styles.value}>{humanCornerChoice(b.cornerChoice)}</Text>
+                  </View>
                 ) : null}
               </>
             )}
