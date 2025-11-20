@@ -270,7 +270,6 @@ export async function GET(req: Request) {
   } else if (status) {
     where.status = status;
   }
-  where.confirmedAt = { not: null };
   if (status) where.status = status;
 
   if (search) {
