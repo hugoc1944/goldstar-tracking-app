@@ -12,9 +12,10 @@ type Status = 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE';
 type OrderRow = {
   id: string;
   shortId: string;
-  customer: { name: string };
+  customer: { name: string; city?: string | null; district?: string | null };
   status: Status;
   visitAwaiting?: boolean;
+  visitAt?: string | null;    
   eta: string | null;
   model: string | null;
   createdAt: string;
@@ -58,7 +59,6 @@ function StatusBadge({ status }: { status: Status }) {
   );
 }
 
-const PAGE_SIZE = 20;
 
 function useDebounced<T>(value: T, ms = 400) {
   const [v, setV] = useState(value);
@@ -85,6 +85,24 @@ export default function OrdersClient() {
   const [search, setSearch] = useState(sp.get('q') ?? '');
   const [status, setStatus] = useState<Status | ''>((sp.get('status') as Status) ?? '');
   const [model, setModel] = useState<string>(sp.get('model') ?? '');
+
+  const [sortBy, setSortBy] = useState(sp.get('sortBy') ?? 'createdAt');
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>(
+    (sp.get('sortDir') as any) ?? 'desc'
+  );
+  // NEW: page size (take)
+  const [pageSize, setPageSize] = useState<number>(() => {
+    const t = sp.get('take');
+    const n = t ? Number(t) : 20;
+    return [20, 50, 100].includes(n) ? n : 20;
+  });
+  
+  const [createdFrom, setCreatedFrom] = useState(sp.get('createdFrom') ?? '');
+  const [createdTo, setCreatedTo] = useState(sp.get('createdTo') ?? '');
+  const [visitFrom, setVisitFrom] = useState(sp.get('visitFrom') ?? '');
+  const [visitTo, setVisitTo] = useState(sp.get('visitTo') ?? '');
+  const [loc, setLoc] = useState(sp.get('loc') ?? '');
+
   const debouncedSearch = useDebounced(search, 350);
   const [creating, setCreating] = useState(false);
   useEffect(() => { router.prefetch('/admin/orders/new'); }, [router]);
@@ -133,8 +151,14 @@ export default function OrdersClient() {
     return selectedRows.every(r => toUiStatus(r) === first) ? first : null;
   })();
   // Map filters -> URLSearchParams (handles the special 'Aguarda visita')
+// Map filters -> URLSearchParams (handles the special 'Aguarda visita')
   function fillListParams(usp: URLSearchParams, opts?: { cursor?: string }) {
     if (debouncedSearch) usp.set('search', debouncedSearch);
+
+    // sorting + paging
+    usp.set('sortBy', sortBy);
+    usp.set('sortDir', sortDir);
+    usp.set('take', String(pageSize));
 
     // special case for "Aguarda visita": we don't send status, we send visit=1
     const s = (status || '') as string;
@@ -145,20 +169,54 @@ export default function OrdersClient() {
     }
 
     if (model) usp.set('model', model);
+
+    // NEW: date ranges + location
+    if (createdFrom) usp.set('createdFrom', createdFrom);
+    if (createdTo) usp.set('createdTo', createdTo);
+    if (visitFrom) usp.set('visitFrom', visitFrom);
+    if (visitTo) usp.set('visitTo', visitTo);
+    if (loc) usp.set('loc', loc);
+
     if (opts?.cursor) usp.set('cursor', opts.cursor);
-    usp.set('take', String(PAGE_SIZE));
   }
 
   // sync filters to URL
   useEffect(() => {
     const usp = new URLSearchParams();
+
     if (debouncedSearch) usp.set('q', debouncedSearch);
+
     if (status) usp.set('status', status);
     if (model) usp.set('model', model);
+
+    if (createdFrom) usp.set('createdFrom', createdFrom);
+    if (createdTo) usp.set('createdTo', createdTo);
+    if (visitFrom) usp.set('visitFrom', visitFrom);
+    if (visitTo) usp.set('visitTo', visitTo);
+    if (loc) usp.set('loc', loc);
+
+    if (sortBy) usp.set('sortBy', sortBy);
+    if (sortDir) usp.set('sortDir', sortDir);
+
+    if (pageSize !== 20) usp.set('take', String(pageSize));
+
     const q = usp.toString();
     router.replace(q ? `${pathname}?${q}` : pathname);
-  }, [debouncedSearch, status, model, pathname, router]);
-
+  }, [
+    debouncedSearch,
+    status,
+    model,
+    createdFrom,
+    createdTo,
+    visitFrom,
+    visitTo,
+    loc,
+    sortBy,
+    sortDir,
+    pageSize,
+    pathname,
+    router
+  ]);
   // load initial list
   useEffect(() => {
     let alive = true;
@@ -185,7 +243,7 @@ export default function OrdersClient() {
     })();
 
     return () => { alive = false; };
-  }, [debouncedSearch, status, model]);
+}, [debouncedSearch, status, model, pageSize, sortBy, sortDir, createdFrom, createdTo, visitFrom, visitTo, loc]);
 
   async function onLoadMore() {
     if (!cursor) return;
@@ -395,6 +453,35 @@ useEffect(() => {
     return () => { alive = false; };
   }, []);
 
+  function toggleSort(col: string) {
+    setSortBy(prev => {
+      if (prev === col) {
+        setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+        return prev;
+      }
+      setSortDir('desc');
+      return col;
+    });
+  }
+
+  function SortTh({
+    col, children, className = ''
+  }: { col: string; children: React.ReactNode; className?: string }) {
+    const active = sortBy === col;
+    return (
+      <th
+        onClick={() => toggleSort(col)}
+        className={`py-3 text-left font-medium cursor-pointer select-none ${className}`}
+        title="Ordenar"
+      >
+        <span className="inline-flex items-center gap-1">
+          {children}
+          {active && (sortDir === 'asc' ? '▲' : '▼')}
+        </span>
+      </th>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
       <header className="mb-6 flex items-center justify-between">
@@ -425,6 +512,16 @@ useEffect(() => {
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <select
+          value={pageSize}
+          onChange={(e) => setPageSize(Number(e.target.value))}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value={20}>20 / página</option>
+          <option value={50}>50 / página</option>
+          <option value={100}>100 / página</option>
+        </select>
+        
         <div className="relative">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -439,7 +536,7 @@ useEffect(() => {
             className="w-72 rounded-lg border border-border bg-surface pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
-
+          
         <select
           value={status}
           onChange={(e) => setStatus((e.target.value || '') as Status | '')}
@@ -463,6 +560,49 @@ useEffect(() => {
             <option key={m.value} value={m.value}>{m.label}</option>
           ))}
         </select>
+         {/* NEW: Criado entre */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Criado</span>
+          <input
+            type="date"
+            value={createdFrom}
+            onChange={(e) => setCreatedFrom(e.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm"
+          />
+          <span className="text-xs text-muted-foreground">→</span>
+          <input
+            type="date"
+            value={createdTo}
+            onChange={(e) => setCreatedTo(e.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm"
+          />
+        </div>
+
+        {/* NEW: Visita entre */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Visita</span>
+          <input
+            type="date"
+            value={visitFrom}
+            onChange={(e) => setVisitFrom(e.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm"
+          />
+          <span className="text-xs text-muted-foreground">→</span>
+          <input
+            type="date"
+            value={visitTo}
+            onChange={(e) => setVisitTo(e.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm"
+          />
+        </div>
+
+        {/* NEW: Cidade/Distrito */}
+        <input
+          value={loc}
+          onChange={(e) => setLoc(e.target.value)}
+          placeholder="Cidade/Distrito"
+          className="w-48 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
          {selected.length > 0 && (
           <button
             onClick={() => setBulkOpen(true)}
@@ -486,11 +626,14 @@ useEffect(() => {
                   aria-label="Selecionar todos"
                 />
               </Th>
-              <Th className="w-36 pl-6">ID do pedido</Th>
-              <Th>Cliente</Th>
-              <Th>Estado</Th>
-              <Th>Conclusão</Th>
-              <Th>Modelo</Th>
+              <SortTh col="shortId" className="w-36 pl-6">ID do pedido</SortTh>
+              <SortTh col="customerName">Cliente</SortTh>
+              <SortTh col="status">Estado</SortTh>
+              <SortTh col="createdAt">Criado em</SortTh>
+              <SortTh col="visitAt">Visita</SortTh>
+              <SortTh col="eta">Conclusão</SortTh>
+              <SortTh col="model">Modelo</SortTh>
+              <SortTh col="city">Localidade</SortTh>
               <Th className="w-16 pr-6 text-right">Ações</Th>
             </tr>
           </thead>
@@ -516,6 +659,19 @@ useEffect(() => {
                 {/* Cliente */}
                 <Td className="text-foreground">{r.customer?.name}</Td>
 
+                {/* Criado em (data + idade) */}
+                <Td className="text-foreground">
+                  {new Date(r.createdAt).toLocaleDateString('pt-PT')}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    ({Math.ceil((Date.now() - new Date(r.createdAt).getTime()) / 86400000)}d)
+                  </span>
+                </Td>
+
+                {/* Visita */}
+                <Td className="text-foreground">
+                  {r.visitAt ? new Date(r.visitAt).toLocaleDateString('pt-PT') : '-'}
+                </Td>
+
                 {/* Estado  ✅ “Aguarda visita” when PREPARACAO + visitAwaiting */}
                 <Td className="text-foreground">
                   {r.status === 'PREPARACAO' && r.visitAwaiting ? (
@@ -535,7 +691,11 @@ useEffect(() => {
 
                 {/* Modelo */}
                 <Td className="text-foreground">{r.model ?? 'Diversos'}</Td>
-
+                {/* Localidade */}
+                <Td className="text-foreground">
+                  {r.customer?.city ?? '-'}
+                  {r.customer?.district ? ` / ${r.customer.district}` : ''}
+                </Td>
                 {/* Ações */}
                 <Td className="pr-6 text-right">
                   <button
@@ -556,7 +716,47 @@ useEffect(() => {
           </tbody>
         </table>
       </div>
+    {/* Active filter chips */}
+      {(() => {
+        const chips = [];
+        if (debouncedSearch) chips.push({ key:'q', label:`Pesquisa: ${debouncedSearch}`, clear: () => setSearch('') });
+        if (status) chips.push({ key:'status', label:`Estado: ${status}`, clear: () => setStatus('') });
+        if (model) chips.push({ key:'model', label:`Modelo: ${model}`, clear: () => setModel('') });
+        if (loc) chips.push({ key:'loc', label:`Localidade: ${loc}`, clear: () => setLoc('') });
+        if (createdFrom || createdTo) chips.push({ key:'created', label:`Criado: ${createdFrom||'…'} → ${createdTo||'…'}`, clear: () => { setCreatedFrom(''); setCreatedTo(''); } });
+        if (visitFrom || visitTo) chips.push({ key:'visit', label:`Visita: ${visitFrom||'…'} → ${visitTo||'…'}`, clear: () => { setVisitFrom(''); setVisitTo(''); } });
+        if (pageSize !== 20) chips.push({ key:'take', label:`Página: ${pageSize}`, clear: () => setPageSize(20) });
 
+        if (!chips.length) return null;
+
+        return (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {chips.map(c => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={c.clear}
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-white px-3 py-1 text-xs text-foreground hover:bg-muted"
+                title="Remover filtro"
+              >
+                {c.label}
+                <span className="text-muted-foreground">✕</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setSearch(''); setStatus(''); setModel(''); setLoc('');
+                setCreatedFrom(''); setCreatedTo(''); setVisitFrom(''); setVisitTo('');
+                setSortBy('createdAt'); setSortDir('desc'); setPageSize(20);
+              }}
+              className="rounded-full border px-3 py-1 text-xs hover:bg-muted"
+            >
+              Limpar tudo
+            </button>
+          </div>
+        );
+      })()}
       {/* Footer / pagination */}
       <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
         <div>{rows.length} de {total}</div>
@@ -589,6 +789,7 @@ useEffect(() => {
           row && row.status === 'PREPARACAO' && row.visitAwaiting
             ? 'AGUARDA_VISITA'
             : (row?.status ?? changeFor.status);
+
 
         return (
           <ChangeStatusModal
