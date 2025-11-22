@@ -546,6 +546,7 @@ function IconSelect({
   }, [groups, options]);
 
   const current = flat.find(o => o.value === value);
+  const canOpen = !disabled && flat.length > 1;
 
   // selecionar item (usar onMouseDown evita "re-click" no trigger)
   const selectItem = (val: string) => {
@@ -558,16 +559,24 @@ function IconSelect({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => (mounted ? closeMenu() : openMenu())}
-        className="w-full rounded border bg-white px-3 py-2 flex items-center justify-between gap-2"
-      >
+        onClick={() => {
+        if (!canOpen) return;
+        mounted ? closeMenu() : openMenu();
+      }}
+      className={[
+        "w-full rounded border bg-white px-3 py-2 flex items-center justify-between gap-2",
+        canOpen ? "cursor-pointer" : "cursor-default"
+      ].join(" ")}
+            >
         <span className="flex items-center gap-2 min-w-0">
           <TinyIcon src={current ? getIcon(current) : undefined} alt={current?.label ?? ''} size={iconSize} />
           <span className="truncate">{current?.label ?? placeholder}</span>
         </span>
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-          <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.24 4.25a.75.75 0 01-1.08 0L5.25 8.27a.75.75 0 01-.02-1.06z"/>
-        </svg>
+        {canOpen && (
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.24 4.25a.75.75 0 01-1.08 0L5.25 8.27a.75.75 0 01-.02-1.06z"/>
+          </svg>
+        )}
       </button>
 
       {mounted && (
@@ -649,7 +658,10 @@ const NumOpt = z.preprocess(
       : v,
   z.number().positive().optional()
 );
-// REPLACE your PublicBudgetSchema with this:
+const TURBO_MODEL_KEY = 'turbo_v1';
+const isTurboModelKey = (key?: string | null) =>
+  canon(key ?? '') === TURBO_MODEL_KEY;
+
 export const PublicBudgetSchema = z.object({
   // cliente
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -705,7 +717,11 @@ export const PublicBudgetSchema = z.object({
   })
   .superRefine((val, ctx) => {
     // medidas
-  if (!val.willSendLater) {
+  // medidas
+const isTurbo = isTurboModelKey(val.modelKey);
+
+// Turbo has preset measures → don't require user input
+if (!isTurbo && !val.willSendLater) {
   if (!val.widthMm || val.widthMm <= 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -918,6 +934,7 @@ export function BudgetFormPageInner() {
   });
 
   const modelKey = form.watch('modelKey');
+  const isTurbo = React.useMemo(() => isTurboModelKey(modelKey), [modelKey]);
   const hideDepth = React.useMemo(() => hideDepthForModel(modelKey), [modelKey]);
   // Load catalog once
   React.useEffect(() => {
@@ -1015,7 +1032,6 @@ React.useEffect(() => {
     };
 
     // Map each URL param → catalog option (by value or label)
-    setIf('finishKey',     matchOption(finishesByRule, search.get('finish')));
     setIf('glassTypeKey',  matchOption(glassAll,       search.get('glass')));
     setIf('handleKey',     matchOption(handleAll,      search.get('handle')));
   // Complementos (URL → catálogo), aceita complemento=vision,toalheiro1...
@@ -1045,18 +1061,22 @@ React.useEffect(() => {
   if (barMatched) {
     form.setValue('barColor', barMatched, { shouldDirty: false });
   }
-    // --- FINISH (Acabamento) -----------------------------------------------
-const rawFinish = search.get('finish');
-let matchedFinish =
-  matchOption(finishesByRule, rawFinish) ||
-  matchOption(finishesByRule, rawFinish?.replace(/_/g, '')) || // 'creme_claro' → 'cremeclaro'
-  matchOption(finishesByRule, search.get('visionSupport'));    // last-resort: mirror visionSupport
+// --- FINISH (Acabamento) -----------------------------------------------
+// IMPORTANT: Turbo finish is enforced elsewhere. Don't overwrite it here.
+if (!isTurboModelKey(form.getValues('modelKey'))) {
+  const rawFinish = search.get('finish');
 
-if (!matchedFinish && finishesByRule.length) {
-  matchedFinish = finishesByRule[0].value; // absolute last fallback
-}
-if (matchedFinish) {
-  form.setValue('finishKey', matchedFinish, { shouldDirty: false });
+  let matchedFinish =
+    matchOption(finishesByRule, rawFinish) ||
+    matchOption(finishesByRule, rawFinish?.replace(/_/g, '')) || // 'creme_claro' → 'cremeclaro'
+    matchOption(finishesByRule, search.get('visionSupport'));    // last-resort: mirror visionSupport
+
+  if (!matchedFinish && finishesByRule.length) {
+    matchedFinish = finishesByRule[0].value; // absolute last fallback
+  }
+  if (matchedFinish) {
+    form.setValue('finishKey', matchedFinish, { shouldDirty: false });
+  }
 }
 
 // --- FIXING BAR (Barra de fixação): accept multiple aliases -------------
@@ -1182,6 +1202,15 @@ if (rawSer) {
     return filtered;
   }, [catalog, modelKey]);
 
+  // Finishes raw (sem regras) — usado para garantir Branco no Turbo
+  const allFinishesRaw = React.useMemo(() => {
+    if (!catalog) return [] as CatItem[];
+    return [
+      ...(catalog['FINISH_METALICO'] ?? []),
+      ...(catalog['FINISH_LACADO'] ?? []),
+    ] as CatItem[];
+  }, [catalog]);
+
   const finishes = React.useMemo(() => {
     if (!catalog) return [];
     const all = [...(catalog['FINISH_METALICO'] ?? []), ...(catalog['FINISH_LACADO'] ?? [])];
@@ -1200,6 +1229,8 @@ if (rawSer) {
       return v !== 'anodizado' && v !== 'cromado';
     });
   }, [finishes]);
+
+  
   const glassTipos = React.useMemo(() => catalog?.['GLASS_TIPO'] ?? [], [catalog]);
   const monos = React.useMemo(() => catalog?.['MONOCROMATICO'] ?? [], [catalog]);
   const complemento = React.useMemo(() => catalog?.['COMPLEMENTO'] ?? [], [catalog]);
@@ -1247,6 +1278,46 @@ const complementoFiltered = React.useMemo(() => {
   }, [allGlassOptions]);
 
   const allowAcrylic = !!rule?.allowAcrylicAndPoly;
+  const acrylics = React.useMemo(
+    () => (catalog?.['ACRYLIC_AND_POLICARBONATE'] ?? []) as CatItem[],
+    [catalog]
+  );
+
+  // --- Turbo preset options ---
+ const turboFinishValue = React.useMemo(() => {
+    const source = allFinishesRaw.length ? allFinishesRaw : finishes;
+    const found =
+      matchOption(source as any, 'Branco') ??
+      source.find(f => canon(f.value) === 'branco')?.value;
+
+    // fallback final: garante sempre 1 valor
+    return found ?? 'branco';
+  }, [allFinishesRaw, finishes]);
+
+  const turboFinishOptions = React.useMemo(() => {
+    const source = allFinishesRaw.length ? allFinishesRaw : finishes;
+    const opt = source.find(f => f.value === turboFinishValue);
+
+    // se não existir no catálogo por algum motivo, cria opção sintética
+    return opt ? [opt] : [{ value: turboFinishValue, label: 'Branco' } as CatItem];
+  }, [allFinishesRaw, finishes, turboFinishValue]);
+  const turboAcrylicValue = React.useMemo(() => {
+    if (!acrylics.length) return undefined;
+    return (
+      matchOption(acrylics as any, 'Agua Viva') ??
+      matchOption(acrylics as any, 'Água Viva') ??
+      acrylics.find(a => canon(a.value) === 'agua_viva' || canon(a.label) === 'agua_viva')?.value
+    );
+  }, [acrylics]);
+
+  const turboAcrylicOptions = React.useMemo(() => {
+    if (!turboAcrylicValue) return [];
+    const opt = acrylics.find(a => a.value === turboAcrylicValue);
+    return opt ? [opt] : [];
+  }, [acrylics, turboAcrylicValue]);
+
+
+
   const allowTowel1 = !!rule?.allowTowel1;
   const hideHandles = !!rule?.hideHandles;
 
@@ -1459,6 +1530,63 @@ const handleAcrylicChange = (nextVal: string | undefined) => {
     }
   }
 };
+
+// --- Turbo preset enforcement ---
+React.useEffect(() => {
+  if (!isTurbo) return;
+
+  // 1) Finish fixed to Branco
+  if (turboFinishValue && form.getValues('finishKey') !== turboFinishValue) {
+    form.setValue('finishKey', turboFinishValue, { shouldDirty: false });
+  }
+
+  // 2) Glass fixed to Transparente (or first glass) even though hidden
+  const glassDefault =
+    transparentGlassValue ??
+    allGlassOptions[0]?.value;
+
+  if (glassDefault && form.getValues('glassTypeKey') !== glassDefault) {
+    form.setValue('glassTypeKey', glassDefault, { shouldDirty: false });
+  }
+
+  // 3) Acrylic fixed to Água Viva (use handler to auto-clear Serigrafia etc.)
+  if (turboAcrylicValue && form.getValues('acrylicKey') !== turboAcrylicValue) {
+    handleAcrylicChange(turboAcrylicValue);
+  }
+
+  // 4) Serigrafia always off
+  if (form.getValues('serigrafiaKey') !== 'nenhum') {
+    form.setValue('serigrafiaKey', 'nenhum', { shouldDirty: false });
+  }
+  if (form.getValues('serigrafiaColor') != null) {
+    form.setValue('serigrafiaColor', undefined, { shouldDirty: false });
+  }
+
+  // 5) Preset measures (cm)
+  const presetW = 75;
+  const presetH = 80;
+
+  if (form.getValues('widthMm') !== presetW) {
+    form.setValue('widthMm', presetW, { shouldDirty: false });
+  }
+  if (form.getValues('heightMm') !== presetH) {
+    form.setValue('heightMm', presetH, { shouldDirty: false });
+  }
+  if (form.getValues('depthMm') != null) {
+    form.setValue('depthMm', undefined, { shouldDirty: false });
+  }
+  if (form.getValues('willSendLater')) {
+    form.setValue('willSendLater', false, { shouldDirty: false });
+  }
+}, [
+  isTurbo,
+  turboFinishValue,
+  turboAcrylicValue,
+  transparentGlassValue,
+  allGlassOptions,
+  form,
+]);
+
 function isAbrirModel(key?: string) {
   if (!key) return false;
   const k = key.toLowerCase();
@@ -1824,10 +1952,15 @@ React.useEffect(() => {
                     <IconSelect
                       value={field.value}
                       onChange={field.onChange}
-                      options={finishes}
+                      options={
+                        isTurbo
+                          ? (turboFinishOptions.length ? turboFinishOptions : finishes)
+                          : finishes
+                      }
                       getIcon={(opt) => finishIconSrc(opt.value)}
                       iconSize={36}
                       itemIconSize={48}
+                      disabled={isTurbo}
                     />
                   )}
                 />
@@ -1853,25 +1986,30 @@ React.useEffect(() => {
               </FieldWrap>
             )}
 
-              <FieldWrap label="Vidro / Monocromático *" error={form.formState.errors?.['glassTypeKey']?.message as string | undefined}>
-                <Controller
-                  name="glassTypeKey"
-                  control={form.control}
-                  render={({ field }) => (
-                    <IconSelect
-                      value={field.value}
-                      onChange={(v) => handleGlassChange(v)}
-                      options={[...(glassTipos ?? []), ...(monos ?? [])]}
-                      getIcon={(opt) => glassIconSrcFromLabel(opt.label)}
-                      iconSize={36}
-                      itemIconSize={48}
-                    />
-                  )}
-                />
-              </FieldWrap>
+              {!isTurbo && (
+                <FieldWrap label="Vidro / Monocromático *" error={form.formState.errors?.['glassTypeKey']?.message as string | undefined}>
+                  <Controller
+                    name="glassTypeKey"
+                    control={form.control}
+                    render={({ field }) => (
+                      <IconSelect
+                        value={field.value}
+                        onChange={(v) => handleGlassChange(v)}
+                        options={[...(glassTipos ?? []), ...(monos ?? [])]}
+                        getIcon={(opt) => glassIconSrcFromLabel(opt.label)}
+                        iconSize={36}
+                        itemIconSize={48}
+                      />
+                    )}
+                  />
+                </FieldWrap>
+              )}
 
-              {allowAcrylic && (
-                <FieldWrap label="Acrílico / Policarbonato" error={form.formState.errors?.['acrylicKey']?.message as string | undefined}>
+              {(allowAcrylic || isTurbo) && (
+                <FieldWrap
+                  label={isTurbo ? "Acrílico" : "Acrílico / Policarbonato"}
+                  error={form.formState.errors?.['acrylicKey']?.message as string | undefined}
+                >
                   <Controller
                     name="acrylicKey"
                     control={form.control}
@@ -1879,10 +2017,15 @@ React.useEffect(() => {
                       <IconSelect
                         value={(field.value ?? '') as string}
                         onChange={(v) => handleAcrylicChange(v || undefined)}
-                        options={(catalog?.ACRYLIC_AND_POLICARBONATE ?? [])}
+                        options={
+                          isTurbo
+                            ? (turboAcrylicOptions.length ? turboAcrylicOptions : acrylics)
+                            : acrylics
+                        }
                         getIcon={(opt) => opt.value === 'nenhum' ? '' : acrylicIconSrcFromLabel(opt.label)}
                         iconSize={36}
                         itemIconSize={48}
+                        disabled={isTurbo}
                       />
                     )}
                   />
@@ -2027,41 +2170,46 @@ React.useEffect(() => {
                 </>
               )}
 
-              <FieldWrap label="Serigrafia" error={form.formState.errors?.['serigrafiaKey']?.message as string | undefined}>
-                <Controller
-                  name="serigrafiaKey"
-                  control={form.control}
-                  render={({ field }) => (
-                    <IconSelect
-                      value={(field.value ?? '') as string}
-                      onChange={(v) => handleSerigrafiaChange(v || undefined)}
-                      options={serigrafias}
-                      getIcon={(opt) => opt.value === 'nenhum' ? '' : silkIconFromOpt(opt)}
-                      iconSize={36}
-                      itemIconSize={48}
-                    />
-                  )}
-                />
-              </FieldWrap>
-             {selSer && selSer !== 'nenhum' && (
-              <FieldWrap label="Cor da Serigrafia *" error={form.formState.errors?.['serigrafiaColor']?.message as string | undefined}>
-                <Controller
-                  name="serigrafiaColor"
-                  control={form.control}
-                  render={({ field }) => (
-                    <IconSelect
-                      value={(field.value ?? '') as string}
-                      onChange={(v) => field.onChange(v || undefined)}
-                      options={serigrafiaColorChoices}            // ⬅️ was finishesNoChromeAnod
-                      getIcon={getSerigrafiaColorIcon}            // ⬅️ was finishIconSrc(opt.value)
-                      iconSize={36}
-                      itemIconSize={48}
-                      placeholder="-"                              // ⬅️ optional; value shows "Padrão" anyway
-                    />
-                  )}
-                />
-              </FieldWrap>
-            )}
+              {!isTurbo && (
+  <>
+    <FieldWrap label="Serigrafia" error={form.formState.errors?.['serigrafiaKey']?.message as string | undefined}>
+      <Controller
+        name="serigrafiaKey"
+        control={form.control}
+        render={({ field }) => (
+          <IconSelect
+            value={(field.value ?? '') as string}
+            onChange={(v) => handleSerigrafiaChange(v || undefined)}
+            options={serigrafias}
+            getIcon={(opt) => opt.value === 'nenhum' ? '' : silkIconFromOpt(opt)}
+            iconSize={36}
+            itemIconSize={48}
+          />
+        )}
+      />
+    </FieldWrap>
+
+    {selSer && selSer !== 'nenhum' && (
+      <FieldWrap label="Cor da Serigrafia *" error={form.formState.errors?.['serigrafiaColor']?.message as string | undefined}>
+        <Controller
+          name="serigrafiaColor"
+          control={form.control}
+          render={({ field }) => (
+            <IconSelect
+              value={(field.value ?? '') as string}
+              onChange={(v) => field.onChange(v || undefined)}
+              options={serigrafiaColorChoices}
+              getIcon={getSerigrafiaColorIcon}
+              iconSize={36}
+              itemIconSize={48}
+              placeholder="-"
+            />
+          )}
+        />
+      </FieldWrap>
+    )}
+  </>
+               )}
             </div>
           </section>
         </div>
@@ -2069,22 +2217,35 @@ React.useEffect(() => {
         {/* Below: single-row sections (unchanged logic, styled) */}
         <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
           <h2 className="mb-1 text-lg font-medium text-neutral-900">Medidas</h2>
-          <p className="mb-3 text-sm text-neutral-600">
-            As medidas não necessitam estar 100% exatas: a nossa equipa <b>desloca-se à sua casa </b>
-             para confirmar antes da produção. Indique valores próximos da realidade
-            para podermos enviar um orçamento o mais preciso possível.
-          </p>
-          <div className={`grid grid-cols-1 ${hideDepth ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-3`}>
-            <NumField f={form} name="widthMm"  label="Largura (cm)" />
-            <NumField f={form} name="heightMm" label="Altura (cm)" />
-            {!hideDepth && <NumField f={form} name="depthMm"  label="Profundidade (cm)" />}
-          </div>
-          <div className="mt-2">
-            <Checkbox f={form} name="willSendLater" label="Enviarei as medidas mais tarde" />
-            <p className="mt-1 text-xs text-neutral-600">
-              Se não indicar as medidas agora, poderá enviá-las depois. Pelo menos largura e altura são necessárias.
-            </p>
-          </div>
+          {isTurbo ? (
+  <>
+    <p className="mt-2 text-sm text-neutral-700">
+      Medidas (cm): <b>75 × 80</b>
+    </p>
+    <p className="mt-1 text-xs text-neutral-600">
+      Este modelo tem uma única medida pré-definida.
+    </p>
+  </>
+) : (
+  <>
+    <p className="mb-3 text-sm text-neutral-600">
+      As medidas não necessitam estar 100% exatas: a nossa equipa <b>desloca-se à sua casa </b>
+       para confirmar antes da produção. Indique valores próximos da realidade
+      para podermos enviar um orçamento o mais preciso possível.
+    </p>
+    <div className={`grid grid-cols-1 ${hideDepth ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-3`}>
+      <NumField f={form} name="widthMm"  label="Largura (cm)" />
+      <NumField f={form} name="heightMm" label="Altura (cm)" />
+      {!hideDepth && <NumField f={form} name="depthMm"  label="Profundidade (cm)" />}
+    </div>
+    <div className="mt-2">
+      <Checkbox f={form} name="willSendLater" label="Enviarei as medidas mais tarde" />
+      <p className="mt-1 text-xs text-neutral-600">
+        Se não indicar as medidas agora, poderá enviá-las depois. Pelo menos largura e altura são necessárias.
+      </p>
+    </div>
+  </>
+)}
         </section>
 
         <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -2176,7 +2337,13 @@ React.useEffect(() => {
           <Textarea f={form} name="notes" label="Notas adicionais" rows={4} />
         </section>
 
-        <div className="pt-2">
+        <div className="pt-2 space-y-2">
+          {isTurbo && (
+            <div className="text-lg font-semibold text-neutral-900">
+              Preço: 190€
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={submitting || locked}
@@ -2190,10 +2357,14 @@ React.useEffect(() => {
           >
             {(submitting || locked) ? (
               <span className="inline-flex items-center">
-                <span className="inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]" style={{width:16,height:16,borderWidth:2}} aria-hidden />
+                <span
+                  className="inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]"
+                  style={{width:16,height:16,borderWidth:2}}
+                  aria-hidden
+                />
                 <span className="ml-2">A enviar…</span>
               </span>
-            ) : 'Enviar Orçamento'}
+            ) : (isTurbo ? 'Fazer Pedido' : 'Enviar Orçamento')}
           </button>
         </div>
       </form>
