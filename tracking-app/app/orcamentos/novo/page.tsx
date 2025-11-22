@@ -935,6 +935,22 @@ export function BudgetFormPageInner() {
 
   const modelKey = form.watch('modelKey');
   const isTurbo = React.useMemo(() => isTurboModelKey(modelKey), [modelKey]);
+    // Reset medidas quando o modelo muda (evita ficar com 75x80 do Turbo)
+  const prevModelRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    const prev = prevModelRef.current;
+
+    // não limpar na 1ª vez (mount / init por URL)
+    if (prev && prev !== modelKey) {
+      form.setValue('widthMm', undefined, { shouldDirty: true });
+      form.setValue('heightMm', undefined, { shouldDirty: true });
+      form.setValue('depthMm', undefined, { shouldDirty: true });
+      form.setValue('willSendLater', false, { shouldDirty: true });
+    }
+
+    prevModelRef.current = modelKey;
+  }, [modelKey, form]);
   const hideDepth = React.useMemo(() => hideDepthForModel(modelKey), [modelKey]);
   // Load catalog once
   React.useEffect(() => {
