@@ -662,6 +662,19 @@ const TURBO_MODEL_KEY = 'turbo_v1';
 const isTurboModelKey = (key?: string | null) =>
   canon(key ?? '') === TURBO_MODEL_KEY;
 
+// --- Medidas preset (cm) dropdown ---
+const MeasurePresetEnum = z.enum(['65x70','70x75','75x80','80x85','85x90']);
+type MeasurePresetValue = z.infer<typeof MeasurePresetEnum>;
+
+const MEASURE_PRESETS: { value: MeasurePresetValue; label: string; w: number; h: number }[] = [
+  { value: '65x70', label: '65 × 70', w: 65, h: 70 },
+  { value: '70x75', label: '70 × 75', w: 70, h: 75 },
+  { value: '75x80', label: '75 × 80', w: 75, h: 80 },
+  { value: '80x85', label: '80 × 85', w: 80, h: 85 },
+  { value: '85x90', label: '85 × 90', w: 85, h: 90 },
+];
+
+
 export const PublicBudgetSchema = z.object({
   // cliente
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -699,6 +712,7 @@ export const PublicBudgetSchema = z.object({
   shelfHeightPct: NumOpt,
 
   // medidas
+  measurePreset: MeasurePresetEnum.optional(),
   widthMm: NumOpt,
   heightMm: NumOpt,
   depthMm: NumOpt,
@@ -924,6 +938,7 @@ export function BudgetFormPageInner() {
       visionSupport: undefined, visionBar: undefined,
       towelColorMode: undefined, shelfColorMode: undefined,   
       cornerChoice: undefined, cornerColorMode: undefined, shelfHeightPct: undefined,
+      measurePreset: '75x80',
       widthMm: undefined, heightMm: undefined, depthMm: undefined,
       willSendLater: search.get('later') === '1',
       deliveryType: '',
@@ -937,20 +952,29 @@ export function BudgetFormPageInner() {
   const isTurbo = React.useMemo(() => isTurboModelKey(modelKey), [modelKey]);
     // Reset medidas quando o modelo muda (evita ficar com 75x80 do Turbo)
   const prevModelRef = React.useRef<string | null>(null);
+// guard: true while we are programmatically applying a preset (avoids feedback loops)
+const settingMeasuresFromPresetRef = React.useRef(false);
 
-  React.useEffect(() => {
-    const prev = prevModelRef.current;
+// record the preset value we last applied programmatically (avoid redundant re-sets)
+const lastPresetAppliedRef = React.useRef<MeasurePresetValue | null>(null);
 
-    // não limpar na 1ª vez (mount / init por URL)
-    if (prev && prev !== modelKey) {
-      form.setValue('widthMm', undefined, { shouldDirty: true });
-      form.setValue('heightMm', undefined, { shouldDirty: true });
-      form.setValue('depthMm', undefined, { shouldDirty: true });
-      form.setValue('willSendLater', false, { shouldDirty: true });
-    }
+  
+React.useEffect(() => {
+  const prev = prevModelRef.current;
 
-    prevModelRef.current = modelKey;
-  }, [modelKey, form]);
+  if (prev && prev !== modelKey) {
+    lastPresetAppliedRef.current = null; // <-- ADD
+
+    form.setValue('widthMm', undefined, { shouldDirty: true });
+    form.setValue('heightMm', undefined, { shouldDirty: true });
+    form.setValue('depthMm', undefined, { shouldDirty: true });
+    form.setValue('willSendLater', false, { shouldDirty: true });
+    form.setValue('measurePreset', '75x80' as any, { shouldDirty: true });
+  }
+
+  prevModelRef.current = modelKey;
+}, [modelKey]); 
+
   const hideDepth = React.useMemo(() => hideDepthForModel(modelKey), [modelKey]);
   // Load catalog once
   React.useEffect(() => {
@@ -1353,6 +1377,80 @@ React.useEffect(() => {
   const comps = form.watch('complementos') ?? [];
   const shelfHeightPct = form.watch('shelfHeightPct') ?? 100;
 
+  const measurePreset = form.watch('measurePreset');
+  const willSendLater = form.watch('willSendLater');
+  const wWidth = form.watch('widthMm');
+  const wHeight = form.watch('heightMm');
+
+// When a preset is chosen, auto-fill width/height (cm) — APPLY ONCE per preset change
+React.useEffect(() => {
+  if (isTurbo || willSendLater) return;
+
+  const preset = MEASURE_PRESETS.find(p => p.value === (measurePreset ?? '75x80'));
+  if (!preset) return;
+
+  // mark that we are programmaticly writing measures so the width/height watcher ignores it
+  settingMeasuresFromPresetRef.current = true;
+
+  try {
+    if (form.getValues('widthMm') !== preset.w) {
+      form.setValue('widthMm', preset.w, { shouldDirty: false });
+    }
+    if (form.getValues('heightMm') !== preset.h) {
+      form.setValue('heightMm', preset.h, { shouldDirty: false });
+    }
+    // remember which preset we applied (used by the width/height watcher)
+    lastPresetAppliedRef.current = preset.value;
+  } finally {
+    // clear the guard on next frame — allow watchers to run, but prevent immediate flip-flop
+    requestAnimationFrame(() => {
+      settingMeasuresFromPresetRef.current = false;
+    });
+  }
+}, [measurePreset, isTurbo, willSendLater, form]);
+  // If user chooses "send later", clear preset + measures; when unchecking, restore default if empty
+React.useEffect(() => {
+  if (isTurbo) return;
+
+  if (willSendLater) {
+    lastPresetAppliedRef.current = null; // <-- ADD
+
+    if (measurePreset) form.setValue('measurePreset', undefined, { shouldDirty: true });
+    if (form.getValues('widthMm') != null) form.setValue('widthMm', undefined, { shouldDirty: true });
+    if (form.getValues('heightMm') != null) form.setValue('heightMm', undefined, { shouldDirty: true });
+  } else {
+    if (!measurePreset) {
+      form.setValue('measurePreset', '75x80' as any, { shouldDirty: true });
+    }
+  }
+}, [willSendLater, isTurbo, measurePreset]); 
+  // If width/height arrive from URL and match a preset, reflect that in the dropdown
+React.useEffect(() => {
+  if (isTurbo || willSendLater) return;
+
+  // if the change was triggered by applying a preset programmatically, ignore it
+  if (settingMeasuresFromPresetRef.current) return;
+  if (wWidth == null || wHeight == null) return;
+
+  const match = MEASURE_PRESETS.find(p => p.w === wWidth && p.h === wHeight);
+  if (!match) {
+    // no preset matches current dims: clear any record of last applied preset
+    lastPresetAppliedRef.current = null;
+    return;
+  }
+
+  // if the match was just applied by the preset effect, skip re-setting measurePreset
+  if (match.value === lastPresetAppliedRef.current) {
+    // consume the marker and do nothing (prevents redundant setValue)
+    lastPresetAppliedRef.current = null;
+    return;
+  }
+
+  if (match && match.value !== measurePreset) {
+    form.setValue('measurePreset', match.value as any, { shouldDirty: false });
+  }
+}, [wWidth, wHeight, measurePreset, isTurbo, willSendLater, form]);
+
 React.useEffect(() => {
   if (comps.includes('vision')) {
   if (!form.getValues('barColor') && (barColors?.length ?? 0) > 0) {
@@ -1582,6 +1680,11 @@ React.useEffect(() => {
   const presetW = 75;
   const presetH = 80;
 
+  // ensure the dropdown shows the turbo preset value
+  if (form.getValues('measurePreset') !== '75x80') {
+    form.setValue('measurePreset', '75x80' as any, { shouldDirty: false });
+  }
+
   if (form.getValues('widthMm') !== presetW) {
     form.setValue('widthMm', presetW, { shouldDirty: false });
   }
@@ -1662,20 +1765,22 @@ function classifyModelGroupByKey(key: string, label: string) {
 const GROUP_ORDER = ['Portas de Abrir', 'Portas de Correr', 'Portas Dobraveis', 'Fixos'];
 
 const groupedModels = React.useMemo(() => {
-  const list = (catalog?.MODEL ?? []) as CatItem[];
+  const list = (catalog?.['MODEL'] ?? []) as CatItem[];
+
   const map = new Map<string, CatItem[]>();
   for (const m of list) {
     const g = classifyModelGroupByKey(m.value, m.label);
     if (!map.has(g)) map.set(g, []);
     map.get(g)!.push(m);
   }
+
   for (const arr of map.values()) {
-    arr.sort((a,b) => {
+    arr.sort((a, b) => {
       if (a.order != null && b.order != null) return a.order - b.order;
-      return a.label.localeCompare(b.label,'pt');
+      return a.label.localeCompare(b.label, 'pt');
     });
   }
-  // keep the groups in the exact order above and omit unknowns
+
   const ordered = new Map<string, CatItem[]>();
   for (const g of GROUP_ORDER) {
     if (map.has(g)) ordered.set(g, map.get(g)!);
@@ -2230,39 +2335,54 @@ React.useEffect(() => {
           </section>
         </div>
 
-        {/* Below: single-row sections (unchanged logic, styled) */}
-        <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-          <h2 className="mb-1 text-lg font-medium text-neutral-900">Medidas</h2>
-          {isTurbo ? (
-  <>
-    <p className="mt-2 text-sm text-neutral-700">
-      Medidas (cm): <b>75 × 80</b>
-    </p>
-    <p className="mt-1 text-xs text-neutral-600">
-      Este modelo tem uma única medida pré-definida.
-    </p>
-  </>
-) : (
-  <>
-    <p className="mb-3 text-sm text-neutral-600">
-      As medidas não necessitam estar 100% exatas: a nossa equipa <b>desloca-se à sua casa </b>
-       para confirmar antes da produção. Indique valores próximos da realidade
-      para podermos enviar um orçamento o mais preciso possível.
-    </p>
-    <div className={`grid grid-cols-1 ${hideDepth ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-3`}>
-      <NumField f={form} name="widthMm"  label="Largura (cm)" />
-      <NumField f={form} name="heightMm" label="Altura (cm)" />
-      {!hideDepth && <NumField f={form} name="depthMm"  label="Profundidade (cm)" />}
+
+        {/* Medidas - DROP-IN REPLACEMENT */}
+<section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+  <h2 className="mb-1 text-lg font-medium text-neutral-900">Medidas</h2>
+
+  {isTurbo ? (
+    <div className="space-y-3">
+      <p className="text-sm text-neutral-600">Este modelo tem medidas pré-definidas.</p>
+
+      <div className={`grid gap-3 ${hideDepth ? 'md:grid-cols-1' : 'md:grid-cols-2'}`}>
+        <Select
+          f={form}
+          name="measurePreset"
+          label="Medidas (cm) *"
+          allowEmpty={false}
+          options={MEASURE_PRESETS as any}
+        />
+      </div>
     </div>
-    <div className="mt-2">
-      <Checkbox f={form} name="willSendLater" label="Enviarei as medidas mais tarde" />
-      <p className="mt-1 text-xs text-neutral-600">
-        Se não indicar as medidas agora, poderá enviá-las depois. Pelo menos largura e altura são necessárias.
+  ) : (
+    <div className="space-y-3">
+      <p className="mb-3 text-sm text-neutral-600">
+        As medidas não necessitam estar 100% exatas: a nossa equipa <b>desloca-se à sua casa</b>
+        para confirmar antes da produção. Indique valores próximos da realidade para podermos enviar um orçamento o mais preciso possível.
       </p>
+
+      <div className="grid grid-cols-2 gap-3">
+        <NumField f={form} name="widthMm" label="Largura (cm)" />
+        <NumField f={form} name="heightMm" label="Altura (cm)" />
+      </div>
+
+      {!hideDepth && (
+        <div className="mt-3">
+          <NumField f={form} name="depthMm" label="Profundidade (cm)" />
+        </div>
+      )}
+
+      <div className="mt-2">
+        <Checkbox f={form} name="willSendLater" label="Enviarei as medidas mais tarde" />
+        <p className="mt-1 text-xs text-neutral-600">
+          Se não indicar as medidas agora, poderá enviá-las depois. Pelo menos largura e altura são necessárias.
+        </p>
+      </div>
     </div>
-  </>
-)}
-        </section>
+  )}
+</section>
+{/* Medidas - DROP-IN REPLACEMENT END */}
+
 
         <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
           <h2 className="mb-3 text-lg font-medium text-neutral-900">Entrega / Instalação</h2>
@@ -2293,7 +2413,7 @@ React.useEffect(() => {
 
         <section className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
           <h2 className="mb-0 text-lg font-medium text-neutral-900">Fotos do espaço</h2>
-          <p className="mb-2 text-lg">Por forma a facilitar o processo, carregue algumas fotos do espaço onde quer instalar o seu resguardo.</p>
+          <p className="mb-2 text-lg">Por forma a facilitar o processo, carregue ou tire algumas fotos do espaço onde quer instalar o seu resguardo.</p>
           {/* Hidden input */}
           <input
             ref={fileInputRef}
@@ -2354,12 +2474,6 @@ React.useEffect(() => {
         </section>
 
         <div className="pt-2 space-y-2">
-          {isTurbo && (
-            <div className="text-lg font-semibold text-neutral-900">
-              Preço: 190€
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={submitting || locked}
