@@ -1,3 +1,4 @@
+// Orçamentos Novo Public Page
 'use client';
 
 import * as React from 'react';
@@ -10,22 +11,6 @@ import type { SubmitHandler, Resolver } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import Image from 'next/image';
 import { Suspense } from 'react';
-
-
-/* --- Loader (Goldstar) --- */
-function GsSpinner({ size = 16, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
-  const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
-  return (
-    <span
-      className={[
-        "inline-block animate-spin rounded-full border-neutral-300 border-t-[#FFD200]",
-        className,
-      ].join(' ')}
-      style={s}
-      aria-hidden
-    />
-  );
-}
 
 function uniqByValue(items: {value:string; label:string; order?:number}[]) {
   const seen = new Set<string>();
@@ -938,7 +923,7 @@ export function BudgetFormPageInner() {
       visionSupport: undefined, visionBar: undefined,
       towelColorMode: undefined, shelfColorMode: undefined,   
       cornerChoice: undefined, cornerColorMode: undefined, shelfHeightPct: undefined,
-      measurePreset: '75x80',
+      measurePreset: undefined,
       widthMm: undefined, heightMm: undefined, depthMm: undefined,
       willSendLater: search.get('later') === '1',
       deliveryType: '',
@@ -969,7 +954,7 @@ React.useEffect(() => {
     form.setValue('heightMm', undefined, { shouldDirty: true });
     form.setValue('depthMm', undefined, { shouldDirty: true });
     form.setValue('willSendLater', false, { shouldDirty: true });
-    form.setValue('measurePreset', '75x80' as any, { shouldDirty: true });
+    form.setValue('measurePreset', undefined, { shouldDirty: true });
   }
 
   prevModelRef.current = modelKey;
@@ -1384,9 +1369,13 @@ React.useEffect(() => {
 
 // When a preset is chosen, auto-fill width/height (cm) — APPLY ONCE per preset change
 React.useEffect(() => {
+  // don't apply presets for Turbo (Turbo has its own preset enforcement)
   if (isTurbo || willSendLater) return;
 
-  const preset = MEASURE_PRESETS.find(p => p.value === (measurePreset ?? '75x80'));
+  // If no preset was explicitly chosen, do nothing.
+  if (!measurePreset) return;
+
+  const preset = MEASURE_PRESETS.find(p => p.value === measurePreset);
   if (!preset) return;
 
   // mark that we are programmaticly writing measures so the width/height watcher ignores it
@@ -1413,17 +1402,15 @@ React.useEffect(() => {
   if (isTurbo) return;
 
   if (willSendLater) {
-    lastPresetAppliedRef.current = null; // <-- ADD
+    lastPresetAppliedRef.current = null;
 
     if (measurePreset) form.setValue('measurePreset', undefined, { shouldDirty: true });
     if (form.getValues('widthMm') != null) form.setValue('widthMm', undefined, { shouldDirty: true });
     if (form.getValues('heightMm') != null) form.setValue('heightMm', undefined, { shouldDirty: true });
-  } else {
-    if (!measurePreset) {
-      form.setValue('measurePreset', '75x80' as any, { shouldDirty: true });
-    }
   }
-}, [willSendLater, isTurbo, measurePreset]); 
+  // when willSendLater becomes false we intentionally do NOT assign a preset;
+  // the measurePreset remains undefined until the user explicitly chooses one.
+}, [willSendLater, isTurbo, measurePreset]);
   // If width/height arrive from URL and match a preset, reflect that in the dropdown
 React.useEffect(() => {
   if (isTurbo || willSendLater) return;

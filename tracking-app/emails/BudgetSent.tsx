@@ -39,12 +39,6 @@ export function BudgetSentEmail({
 
 
       <Text style={{ marginTop: 16 }}>Obrigado!</Text>
-
-      {backofficeUrl && (
-        <Text style={{ marginTop: 16, fontSize: 12, color: '#666' }}>
-          (Backoffice: <Link href={backofficeUrl}>{backofficeUrl}</Link>)
-        </Text>
-      )}
     </Layout>
   );
 }

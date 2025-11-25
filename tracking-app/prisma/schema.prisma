@@ -151,7 +151,11 @@ model Budget {
   launchBonus    String?   // 'shampooGOLDSTAR' | 'gelGOLDSTAR'
   quotedPdfUrl      String?
   invoicePdfUrl    String?  @db.Text
+  filesJson         Json?    
+  publicToken       String?   @unique
   deletedAt         DateTime?
+
+
 
   sentAt           DateTime?          // set when email is sent
   confirmedAt      DateTime?          // set when client confirms

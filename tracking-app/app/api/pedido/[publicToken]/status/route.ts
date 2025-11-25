@@ -68,6 +68,7 @@ export async function GET(_req: Request, ctx: any) {
   const { params } = await resolveCtx(ctx);
   const { publicToken } = params;
 
+  // try to find an Order first
   const order = await prisma.order.findUnique({
     where: { publicToken },
     include: {
@@ -75,7 +76,6 @@ export async function GET(_req: Request, ctx: any) {
         orderBy: { at: 'asc' },
         select: { from: true, to: true, at: true, note: true },
       },
-      
       items: {
         select: {
           description: true,
@@ -91,66 +91,125 @@ export async function GET(_req: Request, ctx: any) {
         select: {
           sentAt: true,
           confirmedAt: true,
-          quotedPdfUrl: true,  
-          widthMm: true,        
-          heightMm: true,      
-          depthMm: true,        
-          willSendLater: true, 
+          quotedPdfUrl: true,
+          widthMm: true,
+          heightMm: true,
+          depthMm: true,
+          willSendLater: true,
         },
       },
     },
   });
 
-  if (!order) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (order) {
+    const requiresConfirmation = order.confirmedAt == null;
+    return NextResponse.json({
+      ref: order.id,
+      status: order.status,
+      createdAt: order.createdAt.toISOString(),
+      eta: order.eta ? order.eta.toISOString() : null,
+      clientName: order.customer?.name ?? null,
+      requiresConfirmation,
+      visitAwaiting: order.visitAwaiting,
+      pdfUrl: order.createdFromBudget?.quotedPdfUrl ?? null,
+      delivery: {
+        deliveryType: order.deliveryType ?? null,
+        housingType: order.housingType ?? null,
+        floorNumber: order.floorNumber ?? null,
+        hasElevator: order.hasElevator ?? null,
+      },
+      measures: order.createdFromBudget
+        ? {
+            widthMm: order.createdFromBudget.widthMm ?? null,
+            heightMm: order.createdFromBudget.heightMm ?? null,
+            depthMm: order.createdFromBudget.depthMm ?? null,
+            willSendLater: order.createdFromBudget.willSendLater ?? null,
+          }
+        : null,
+      items: requiresConfirmation
+        ? []
+        : order.items.map((it) => ({
+            description: it.description,
+            quantity: it.quantity,
+            model: it.model ?? null,
+            complements: it.complements ?? null,
+            customizations:
+              (it.customizations as Record<string, string | null> | null) ?? null,
+          })),
+      events: requiresConfirmation
+        ? []
+        : order.events.map((e) => ({
+            from: e.from,
+            to: e.to,
+            at: e.at.toISOString(),
+            note: e.note,
+          })),
+    });
   }
 
-  const requiresConfirmation = order.confirmedAt == null;
-
-  return NextResponse.json({
-    ref: order.id,
-    status: order.status,
-    createdAt: order.createdAt.toISOString(),
-    eta: order.eta ? order.eta.toISOString() : null,
-    clientName: order.customer?.name ?? null,
-    requiresConfirmation,
-    visitAwaiting: order.visitAwaiting,
-    pdfUrl: order.createdFromBudget?.quotedPdfUrl ?? null,
-    
-    delivery: {
-    deliveryType: order.deliveryType ?? null,
-    housingType:  order.housingType ?? null,
-    floorNumber:  order.floorNumber ?? null,
-    hasElevator:  order.hasElevator ?? null,
+  // If no order found, try to find a Budget by the same token
+  const budget = await prisma.budget.findUnique({
+    where: { publicToken },
+    select: {
+      id: true,
+      createdAt: true,
+      name: true,
+      email: true,
+      modelKey: true,
+      complemento: true,
+      quotedPdfUrl: true,
+      photoUrls: true,
+      deliveryType: true,
+      housingType: true,
+      floorNumber: true,
+      hasElevator: true,
+      widthMm: true,
+      heightMm: true,
+      depthMm: true,
+      willSendLater: true,
+      sentAt: true,
     },
-    measures: order.createdFromBudget
-      ? {
-          widthMm:      order.createdFromBudget.widthMm ?? null,
-          heightMm:     order.createdFromBudget.heightMm ?? null,
-          depthMm:      order.createdFromBudget.depthMm ?? null,
-          willSendLater: order.createdFromBudget.willSendLater ?? null,
-        }
-      : null,
-
-    items: requiresConfirmation
-      ? []
-      : order.items.map((it) => ({
-          description: it.description,
-          quantity: it.quantity,
-          model: it.model ?? null,
-          complements: it.complements ?? null,
-          customizations:
-            (it.customizations as Record<string, string | null> | null) ?? null,
-        })),
-    events: requiresConfirmation
-      ? []
-      : order.events.map((e) => ({
-          from: e.from,
-          to: e.to,
-          at: e.at.toISOString(),
-          note: e.note,
-        })),
   });
+
+  if (budget) {
+    // Build a payload the public page can consume and that triggers confirmation UI
+    return NextResponse.json({
+      ref: budget.id,
+      status: 'PREPARACAO',
+      createdAt: budget.createdAt?.toISOString(),
+      eta: null,
+      clientName: budget.name ?? null,
+      requiresConfirmation: true,
+      visitAwaiting: false,
+      pdfUrl: budget.quotedPdfUrl ?? null,
+      delivery: {
+        deliveryType: budget.deliveryType ?? null,
+        housingType: budget.housingType ?? null,
+        floorNumber: budget.floorNumber ?? null,
+        hasElevator: budget.hasElevator ?? null,
+      },
+      measures: {
+        widthMm: budget.widthMm ?? null,
+        heightMm: budget.heightMm ?? null,
+        depthMm: budget.depthMm ?? null,
+        willSendLater: budget.willSendLater ?? null,
+      },
+      items: [
+        {
+          description: budget.modelKey ?? 'Orçamento',
+          quantity: 1,
+          model: budget.modelKey ?? null,
+          complements: budget.complemento ?? null,
+          customizations: null,
+        },
+      ],
+      events: [],
+      photoUrls: Array.isArray(budget.photoUrls) ? budget.photoUrls : null,
+    });
+  }
+
+  // not found
+  return NextResponse.json({ error: 'Not found' }, { status: 404 });
 }
 
 // ---------- POST (public message -> notifies support, stores message) ----------

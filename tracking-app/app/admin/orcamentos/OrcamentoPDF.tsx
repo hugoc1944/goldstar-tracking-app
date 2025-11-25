@@ -4,6 +4,12 @@ import { Document, Page, Text, View, StyleSheet, Image, Link } from '@react-pdf/
 
 const brandGold = '#FCCC1A';
 
+// Detect Turbo-like model keys (coarse but matches admin logic)
+function isTurboModelKey(key?: string | null) {
+  if (!key) return false;
+  return String(key).toLowerCase().replace(/[\s_-]+/g, '').startsWith('turbo');
+}
+
 const titleCase = (s: string) =>
   s.toLowerCase().replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -121,10 +127,20 @@ function buildSimUrlFromBudget(b: any) {
   if (b.handleKey) q.set('handle', String(b.handleKey));
 
   // Glass / acrylic
+// Glass / acrylic (Turbo special-case: prefer acrylic, hide glass)
+const isTurbo = isTurboModelKey(b.modelKey);
+
+// Turbo: do NOT set glass param (so "Vidro transparente" won't be sent).
+// Instead send acrylic param (prefer b.acrylicKey, fallback to 'agua_viva').
+if (isTurbo) {
+  const acrylicKey = (b.acrylicKey && String(b.acrylicKey).toLowerCase() !== 'nenhum') ? String(b.acrylicKey) : 'agua_viva';
+  q.set('acrylic', acrylicKey);
+} else {
   if (b.glassTypeKey) q.set('glass', toPublicGlass(b.glassTypeKey));
   if (b.acrylicKey && b.acrylicKey !== 'nenhum') {
     q.set('acrylic', String(b.acrylicKey));
   }
+}
 
   // Serigrafia
   if (b.serigrafiaKey && b.serigrafiaKey !== 'nenhum') {
@@ -261,8 +277,20 @@ export function OrcamentoPDF({ b }: { b: any }) {
             <View style={styles.row}><Text style={styles.label}>Modelo</Text><Text style={styles.value}>{humanModel(b.modelKey)}</Text></View>
             <View style={styles.row}><Text style={styles.label}>Puxador</Text><Text style={styles.value}>{humanHandle(b.handleKey)}</Text></View>
             <View style={styles.row}><Text style={styles.label}>Acabamento</Text><Text style={styles.value}>{titleCase(String(b.finishKey ?? '-'))}</Text></View>
-            <View style={styles.row}><Text style={styles.label}>Vidro / Monocromático</Text><Text style={styles.value}>{titleCase(String(b.glassTypeKey ?? '-'))}</Text></View>
-
+            { /* For Turbo models show Acrílico (Água Viva) instead of Vidro */ }
+            {isTurboModelKey(b.modelKey) ? (
+              <View style={styles.row}>
+                <Text style={styles.label}>Acrílico</Text>
+                <Text style={styles.value}>
+                  {b.acrylicKey ? titleCase(String(b.acrylicKey)) : 'Água Viva'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.row}>
+                <Text style={styles.label}>Vidro / Monocromático</Text>
+                <Text style={styles.value}>{titleCase(String(b.glassTypeKey ?? '-'))}</Text>
+              </View>
+            )}
             {/* ✅ Complementos list */}
             <View style={styles.row}><Text style={styles.label}>Complementos</Text><Text style={styles.value}>{humanComplementos(comps)}</Text></View>
 
@@ -270,10 +298,10 @@ export function OrcamentoPDF({ b }: { b: any }) {
             {comps.includes('vision') && (
               <>
                 {b.barColor ? (
-                  <View style={styles.row}><Text style={styles.label}>Vision — Barra</Text><Text style={styles.value}>{titleCase(b.barColor)}</Text></View>
+                  <View style={styles.row}><Text style={styles.label}>Vision - Barra</Text><Text style={styles.value}>{titleCase(b.barColor)}</Text></View>
                 ) : null}
                 {b.visionSupport ? (
-                  <View style={styles.row}><Text style={styles.label}>Vision — Suporte</Text><Text style={styles.value}>{titleCase(b.visionSupport)}</Text></View>
+                  <View style={styles.row}><Text style={styles.label}>Vision - Suporte</Text><Text style={styles.value}>{titleCase(b.visionSupport)}</Text></View>
                 ) : null}
               </>
             )}
@@ -281,7 +309,7 @@ export function OrcamentoPDF({ b }: { b: any }) {
             {/* ✅ Toalheiro 1 */}
             {comps.includes('toalheiro1') && (
               <View style={styles.row}>
-                <Text style={styles.label}>Toalheiro — Cor</Text>
+                <Text style={styles.label}>Toalheiro - Cor</Text>
                 <Text style={styles.value}>{humanTowelColorMode(b.towelColorMode)}</Text>
               </View>
             )}
@@ -290,20 +318,20 @@ export function OrcamentoPDF({ b }: { b: any }) {
             {comps.includes('prateleira') && (
               <>
                 <View style={styles.row}>
-                  <Text style={styles.label}>Prateleira — Cor do suporte</Text>
+                  <Text style={styles.label}>Prateleira - Cor do suporte</Text>
                   <Text style={styles.value}>{humanShelfColorMode(b.shelfColorMode)}</Text>
                 </View>
 
                 {typeof b.shelfHeightPct === 'number' ? (
                   <View style={styles.row}>
-                    <Text style={styles.label}>Prateleira — Altura</Text>
+                    <Text style={styles.label}>Prateleira - Altura</Text>
                     <Text style={styles.value}>{Math.round(b.shelfHeightPct)}%</Text>
                   </View>
                 ) : null}
 
                 {b.cornerChoice ? (
                   <View style={styles.row}>
-                    <Text style={styles.label}>Prateleira — Canto</Text>
+                    <Text style={styles.label}>Prateleira - Canto</Text>
                     <Text style={styles.value}>{humanCornerChoice(b.cornerChoice)}</Text>
                   </View>
                 ) : null}
