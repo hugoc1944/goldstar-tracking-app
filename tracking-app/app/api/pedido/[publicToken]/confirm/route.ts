@@ -75,20 +75,82 @@ export async function POST(_req: Request, { params }: Params) {
       // create order using budget data (attach publicToken so link stays same)
       o = await tx.order.create({
         data: {
-          customer: { connect: { id: cust.id } },
-          status: 'PREPARACAO',
-          confirmedAt: now,
-          visitAwaiting: true,
-          publicToken: (budget as any).publicToken ?? publicToken,
-          filesJson: (budget as any).quotedPdfUrl
-            ? [{ url: (budget as any).quotedPdfUrl, name: nameFromUrl((budget as any).quotedPdfUrl) }]
-            : [],
-          // copy delivery fields if present in budget
-          deliveryType: (budget as any).deliveryType ?? null,
-          housingType: (budget as any).housingType ?? null,
-          floorNumber: (budget as any).floorNumber ?? null,
-          hasElevator: (budget as any).hasElevator ?? null,
-        },
+        customer: { connect: { id: cust.id } },
+        status: 'PREPARACAO',
+        confirmedAt: now,
+        visitAwaiting: true,
+        publicToken: (budget as any).publicToken ?? publicToken,
+        filesJson: (() => {
+              if (!budget) return [];
+
+              const raw = Array.isArray((budget as any).filesJson)
+                ? (budget as any).filesJson
+                : [];
+
+              const out: any[] = [];
+
+              for (const f of raw) {
+                if (!f) continue;
+
+                const url = typeof f === 'string'
+                  ? f
+                  : (f as any).url;
+
+                if (!url) continue;
+
+                const name =
+                  typeof f === 'object' && (f as any).name
+                    ? (f as any).name
+                    : nameFromUrl(url);
+
+                const size =
+                  typeof f === 'object' && typeof (f as any).size === 'number'
+                    ? (f as any).size
+                    : 0;
+
+                const mime =
+                  typeof f === 'object' && typeof (f as any).mime === 'string'
+                    ? (f as any).mime
+                    : url.endsWith('.pdf')
+                    ? 'application/pdf'
+                    : null;
+
+                out.push({ url, name, size, mime });
+              }
+
+              // Ensure we have entries for the quoted PDF and invoice, even if they weren't in filesJson
+              const ensure = (url?: string | null) => {
+                if (!url) return;
+                if (out.some((f) => f.url === url)) return;
+                out.push({
+                  url,
+                  name: nameFromUrl(url),
+                  size: 0,
+                  mime: url.endsWith('.pdf') ? 'application/pdf' : null,
+                });
+              };
+
+              ensure((budget as any).quotedPdfUrl);
+              ensure((budget as any).invoicePdfUrl);
+
+              // De-duplicate by URL (keep the first entry)
+              const seen = new Set<string>();
+              return out.filter((f) => {
+                if (seen.has(f.url)) return false;
+                seen.add(f.url);
+                return true;
+              });
+            })(),
+        // *** copy measures from budget (stored in mm) ***
+        widthMm: (budget as any).widthMm ?? null,
+        heightMm: (budget as any).heightMm ?? null,
+        depthMm: (budget as any).depthMm ?? null,
+        // copy delivery fields
+        deliveryType: (budget as any).deliveryType ?? null,
+        housingType: (budget as any).housingType ?? null,
+        floorNumber: (budget as any).floorNumber ?? null,
+        hasElevator: (budget as any).hasElevator ?? null,
+      },
         include: { customer: true, createdFromBudget: true },
       });
 
@@ -105,6 +167,9 @@ export async function POST(_req: Request, { params }: Params) {
           confirmedAt: now,
           status: 'PREPARACAO',
           visitAwaiting: true,
+          widthMm: (budget as any).widthMm ?? undefined,
+          heightMm: (budget as any).heightMm ?? undefined,
+          depthMm: (budget as any).depthMm ?? undefined,
         },
         include: { customer: true, createdFromBudget: true },
       });

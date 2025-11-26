@@ -63,46 +63,56 @@ async function sendBudgetAndEmail(
   const saved = await prisma.budget.findUnique({ where: { id: budgetId } });
   if (!saved) throw new Error('budget not found after upload');
 
-// 5) build files array — ALWAYS MERGE WITH EXISTING filesJson
-type FileItem = { kind: string; label: string; url: string };
+  // 5) build files array — ALWAYS MERGE WITH EXISTING filesJson
+  type FileItem = { kind: string; label: string; url: string };
 
-// normalize existing filesJson
-const existingFilesRaw = Array.isArray(saved.filesJson) ? saved.filesJson : [];
-const existingFiles: FileItem[] = existingFilesRaw
-  .map((f: any) =>
-    f && typeof f === 'object' && typeof f.url === 'string'
-      ? { kind: f.kind ?? 'unknown', label: f.label ?? 'Anexo', url: f.url }
-      : null
-  )
-  .filter(Boolean) as FileItem[];
+  // We will remove any *old invoice entries* so we never duplicate the invoice URL.
+  const invoiceUrl = saved.invoicePdfUrl ?? null;
 
-// NEW QUOTE PDF
-const quoteFile: FileItem = {
-  kind: 'quote',
-  label: 'Orçamento',
-  url: blob.url,
-};
+  // normalize existing filesJson, removing invoice duplicates
+  const existingFilesRaw = Array.isArray(saved.filesJson) ? saved.filesJson : [];
+  const existingFiles: FileItem[] = existingFilesRaw
+    .map((f: any) => {
+      if (!f || typeof f !== 'object' || typeof f.url !== 'string') return null;
 
-// invoice (if exists)
-const invoiceFile: FileItem | null = saved.invoicePdfUrl
-  ? { kind: 'invoice', label: 'Fatura', url: saved.invoicePdfUrl }
-  : null;
+      // ❌ REMOVE any existing invoice file to avoid duplicates
+      if (invoiceUrl && f.url === invoiceUrl) return null;
 
-// photos
-const photoFiles: FileItem[] = Array.isArray(saved.photoUrls)
-  ? (saved.photoUrls as any[])
-      .filter((u: any) => !!u)
-      .map((u: any) => ({ kind: 'photo', label: 'Foto', url: String(u) }))
-  : [];
+      return {
+        kind: f.kind ?? 'unknown',
+        label: f.label ?? 'Anexo',
+        url: f.url,
+      };
+    })
+    .filter(Boolean) as FileItem[];
 
+  // NEW QUOTE PDF
+  const quoteFile: FileItem = {
+    kind: 'quote',
+    label: 'Orçamento',
+    url: blob.url,
+  };
 
-// FINAL MERGED FILE LIST
-const files: FileItem[] = [
-  ...existingFiles,   // KEEP existing attachments (invoice stays!)
-  quoteFile,
-  ...(invoiceFile ? [invoiceFile] : []),
-  ...photoFiles,
-];
+  // invoice (single canonical entry)
+  const invoiceFile: FileItem | null = invoiceUrl
+    ? { kind: 'invoice', label: 'Fatura', url: invoiceUrl }
+    : null;
+
+  // photos
+  const photoFiles: FileItem[] = Array.isArray(saved.photoUrls)
+    ? (saved.photoUrls as any[])
+        .filter((u: any) => !!u)
+        .map((u: any) => ({ kind: 'photo', label: 'Foto', url: String(u) }))
+    : [];
+
+  // FINAL MERGED FILE LIST (now guaranteed to have max 1 invoice)
+  const files: FileItem[] = [
+    ...existingFiles,
+    quoteFile,
+    ...(invoiceFile ? [invoiceFile] : []),
+    ...photoFiles,
+  ];
+
   // 6) upsert customer
   const customer = await prisma.customer.upsert({
     where: { email: saved.email },

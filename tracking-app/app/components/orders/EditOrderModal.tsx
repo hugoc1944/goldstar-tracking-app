@@ -55,6 +55,26 @@ const MODEL_CANON: Record<string, string> = {
   foleap: 'FoleAP',
 };
 
+// -------------------------------------------------
+// Helpers reused from other files: canon + Turbo detector
+// -------------------------------------------------
+function canon(input: string) {
+  return input
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')     // strip accents
+    .replace(/[\s-]+/g, '_')             // spaces & hyphens → underscores
+    .replace(/_+/g, '_')                 // collapse multiple underscores
+    .trim();
+}
+
+const TURBO_MODEL_KEY = 'turbo_v1';
+
+function isTurboModelKey(key?: string | null) {
+  if (!key) return false;
+  return canon(key ?? '') === TURBO_MODEL_KEY;
+}
+
 function simModelParamFromKey(input: string | undefined) {
   if (!input) return '';
   const s = input.replace(/-/g, '_').replace(/\s+/g, '_').trim();
@@ -139,7 +159,7 @@ export function EditOrderModal({
         const data = (await r.json()) as Catalog;
         if (live) setCatalog(data);
       } catch {
-        setCatalog({});
+       setCatalog({} as Catalog);
       }
     })();
     return () => { live = false; };
@@ -173,6 +193,150 @@ export function EditOrderModal({
 
   });
 
+  // --- measures: initialize and keep in sync if `order` prop updates ---
+     // --- measures: initialize and keep in sync if `order` prop updates ---
+  const _orderAny = order as any;
+  // --- measures: robust extraction from multiple shapes (order | forModal | details | items[0].customizations) ---
+  const extractMm = (maybe: any) => {
+    if (maybe === null || maybe === undefined) return null;
+    if (typeof maybe === 'object') {
+      // handle { value: X } or { mm: X } or string-like wrappers
+      if ('mm' in maybe) maybe = maybe.mm;
+      else if ('value' in maybe) maybe = maybe.value;
+      else if (typeof maybe.toString === 'function') maybe = String(maybe);
+    }
+    const n = typeof maybe === 'number' ? maybe : Number(String(maybe).replace(',', '.'));
+    return Number.isFinite(n) ? Math.round(n) : null;
+  };
+
+  const lookups = [
+    (o: any) => o,                            // top-level order
+    (o: any) => o.forModal,                   // maybe passed as full api and we received forModal under it
+    (o: any) => o.forModal?.details,          // nested details
+    (o: any) => o.details,                    // top-level details
+    (o: any) => o.items?.[0],                 // first item (synthetic details item)
+    (o: any) => o.items?.[0]?.customizations, // legacy customizations
+    (o: any) => o.items?.[0]?.details,        // uncommon but safe
+  ];
+
+  function findField(ord: any, field: 'widthMm' | 'heightMm' | 'depthMm') {
+    for (const get of lookups) {
+      const candidate = get(ord);
+      if (!candidate) continue;
+      // direct field
+      if (field in candidate) {
+        const v = extractMm((candidate as any)[field]);
+        if (v != null) return v;
+      }
+      // sometimes stored as width/height/depth (no Mm suffix)
+      const alt = field.replace('Mm', '');
+      if (alt in candidate) {
+        const v = extractMm((candidate as any)[alt]);
+        if (v != null) return v;
+      }
+      // customizations object inside details/item
+      if (candidate?.customizations && (candidate.customizations[field] !== undefined)) {
+        const v = extractMm(candidate.customizations[field]);
+        if (v != null) return v;
+      }
+      if (candidate?.customizations && (candidate.customizations[alt] !== undefined)) {
+        const v = extractMm(candidate.customizations[alt]);
+        if (v != null) return v;
+      }
+    }
+    return null;
+  }
+
+  const initialWidthMm = findField(order, 'widthMm');
+  const initialHeightMm = findField(order, 'heightMm');
+  const initialDepthMm = findField(order, 'depthMm');
+
+  const [measures, setMeasures] = React.useState({
+    widthCm: initialWidthMm ? String(initialWidthMm / 10) : '',
+    heightCm: initialHeightMm ? String(initialHeightMm / 10) : '',
+    depthCm: initialDepthMm ? String(initialDepthMm / 10) : '',
+  });
+
+  // keep in sync on order changes (handles async loader updates)
+// keep in sync on order changes (handles async loader updates)
+// keep in sync on order changes (handles async loader updates)
+React.useEffect(() => {
+  const w = findField(order as any, 'widthMm');
+  const h = findField(order as any, 'heightMm');
+  const d = findField(order as any, 'depthMm');
+
+  // If we already have values, set and return
+  if (w || h || d) {
+    setMeasures({
+      widthCm: w ? String(w / 10) : '',
+      heightCm: h ? String(h / 10) : '',
+      depthCm: d ? String(d / 10) : '',
+    });
+    console.debug('EditOrderModal - measure sync (found locally)', { w, h, d });
+    return;
+  }
+
+  // Otherwise, attempt to fetch canonical order from the API as a robust fallback.
+  // This covers cases where the parent passed a trimmed object or a "forModal" wrapper.
+  let abort = false;
+  (async () => {
+    try {
+      console.debug('EditOrderModal - measure sync: no local measures, fetching /api/orders/:id fallback', { orderId: (order as any)?.id });
+      if (!(order as any)?.id) {
+        console.debug('EditOrderModal - measure sync: no order.id present, aborting fetch fallback');
+        return;
+      }
+      const res = await fetch(`/api/orders/${encodeURIComponent((order as any).id)}`, { cache: 'no-store' });
+      if (!res.ok) {
+        console.warn('EditOrderModal - fallback fetch failed', await res.text());
+        return;
+      }
+      const data = await res.json();
+      if (abort) return;
+
+      // Try multiple shapes: top-level, forModal.details, items[0].customizations
+      const candidates = [
+        data,                          // full api response
+        data.forModal,                 // sometimes parent returns forModal as root
+        data.forModal?.details,        // inside forModal
+        data.items?.[0]?.customizations,
+        data.items?.[0],
+        data.details,
+      ];
+
+      let fw: number | null = null;
+      let fh: number | null = null;
+      let fd: number | null = null;
+
+      for (const c of candidates) {
+        if (!c) continue;
+        const tryW = extractMm((c as any).widthMm ?? (c as any).width);
+        const tryH = extractMm((c as any).heightMm ?? (c as any).height);
+        const tryD = extractMm((c as any).depthMm ?? (c as any).depth);
+        if (tryW != null && fw == null) fw = tryW;
+        if (tryH != null && fh == null) fh = tryH;
+        if (tryD != null && fd == null) fd = tryD;
+        // stop early if all found
+        if (fw != null && fh != null && fd != null) break;
+      }
+
+      if (fw || fh || fd) {
+        setMeasures({
+          widthCm: fw ? String(fw / 10) : '',
+          heightCm: fh ? String(fh / 10) : '',
+          depthCm: fd ? String(fd / 10) : '',
+        });
+        console.debug('EditOrderModal - measure sync (from fallback API)', { fw, fh, fd, candidatesPreview: { top: data.widthMm ?? null, forModal: data.forModal?.details ?? null } });
+      } else {
+        console.debug('EditOrderModal - measure sync fallback: no measures found in API response', { candidatesPreview: { top: data.widthMm ?? null, forModal: data.forModal?.details ?? null } });
+      }
+    } catch (err) {
+      console.warn('EditOrderModal - measure sync fallback error', err);
+    }
+  })();
+
+  return () => { abort = true; };
+}, [order]);
   function toggleComplement(value: string) {
   setDetails((d) => {
     const set = new Set(d.complements);
@@ -353,6 +517,19 @@ const simulatorUrl = React.useMemo(() => {
 
   async function submit() {
     setSaving(true);
+    
+  const toMm = (cmStr?: string) => {
+    if (cmStr == null) return null;
+    const n = Number(String(cmStr).replace(',', '.'));
+    if (!n || Number.isNaN(n)) return null;
+    return Math.round(n * 10);
+  };
+
+  const measuresPayload = {
+    widthMm: toMm(measures.widthCm),
+    heightMm: toMm(measures.heightCm) ?? (isTurboModelKey(details.model) ? 1785 : null),
+    depthMm: toMm(measures.depthCm),
+  };
     try {
       const r = await fetch(`/api/orders/${order.id}`, {
         method: 'PATCH',
@@ -397,6 +574,7 @@ const simulatorUrl = React.useMemo(() => {
                 : null,
             fixingBarMode: showFixBar ? (details.fixingBarMode || null) : null,
           },
+          ...measuresPayload,
           delivery: {
             deliveryType: delivery.deliveryType || null,
             housingType:  delivery.housingType  || null,
@@ -686,6 +864,34 @@ const simulatorUrl = React.useMemo(() => {
                 />
               )}
             </section>
+          </div>
+
+          {/* Measures */}
+          <div className="space-y-2">
+            <label className="text-sm text-foreground">Medidas (cm)</label>
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2"
+                placeholder="Largura (cm)"
+                value={measures.widthCm}
+                onChange={(e) => setMeasures(m => ({ ...m, widthCm: e.target.value }))}
+              />
+              <input
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2"
+                placeholder="Altura (cm)"
+                value={measures.heightCm}
+                onChange={(e) => setMeasures(m => ({ ...m, heightCm: e.target.value }))}
+              />
+              <input
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2"
+                placeholder="Profundidade (cm)"
+                value={measures.depthCm}
+                onChange={(e) => setMeasures(m => ({ ...m, depthCm: e.target.value }))}
+              />
+            </div>
+            {isTurboModelKey(details.model) && (
+              <div className="text-xs text-neutral-500">Turbo: altura recomendada 178.5 cm (será aplicada se não preencher).</div>
+            )}
           </div>
 
           {/* DADOS DE ENTREGA */}

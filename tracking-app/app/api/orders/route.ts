@@ -56,6 +56,11 @@ const CreateBody = z.object({
       quantity: z.number().int().positive().default(1),
     })).optional().default([]),
 
+    // NEW: measurements in millimeters
+    widthMm: z.number().int().positive().optional().nullable(),
+    heightMm: z.number().int().positive().optional().nullable(),
+    depthMm: z.number().int().positive().optional().nullable(),
+
     // NEW: delivery block
     delivery: z.object({
       deliveryType: z.string().optional().nullable(),   // "entrega" | "entrega_instalacao"
@@ -145,6 +150,12 @@ const normalizeComplements = (raw: any): string => {
 
         // files
         filesJson: order.files?.length ? order.files : undefined,
+        confirmedAt: new Date(),
+
+        // measurements (millimetres) — accept numbers or undefined
+        widthMm: typeof order.widthMm === 'number' ? Math.round(order.widthMm) : undefined,
+        heightMm: typeof order.heightMm === 'number' ? Math.round(order.heightMm) : undefined,
+        depthMm: typeof order.depthMm === 'number' ? Math.round(order.depthMm) : undefined,
 
         // NEW — delivery on Order
         deliveryType: order.delivery?.deliveryType ?? null,
@@ -200,6 +211,12 @@ const normalizeComplements = (raw: any): string => {
           visionSupport: order.visionSupport ?? null,
           towelColorMode: order.towelColorMode ?? null,
           shelfColorMode: order.shelfColorMode ?? null,
+
+          // measurements (make available to EditOrderModal via item.customizations)
+          ...(typeof order.widthMm === 'number' ? { widthMm: Math.round(order.widthMm) } : {}),
+          ...(typeof order.heightMm === 'number' ? { heightMm: Math.round(order.heightMm) } : {}),
+          ...(typeof order.depthMm === 'number' ? { depthMm: Math.round(order.depthMm) } : {}),
+
         },
       },
     });

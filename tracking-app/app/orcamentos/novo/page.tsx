@@ -646,6 +646,8 @@ const NumOpt = z.preprocess(
 const TURBO_MODEL_KEY = 'turbo_v1';
 const isTurboModelKey = (key?: string | null) =>
   canon(key ?? '') === TURBO_MODEL_KEY;
+// Altura fixa (cm) para o modelo Turbo
+const TURBO_HEIGHT_CM = 178.5;
 
 // --- Medidas preset (cm) dropdown ---
 const MeasurePresetEnum = z.enum(['65x70','70x75','75x80','80x85','85x90']);
@@ -1368,35 +1370,82 @@ React.useEffect(() => {
   const wHeight = form.watch('heightMm');
 
 // When a preset is chosen, auto-fill width/height (cm) — APPLY ONCE per preset change
+// --- Turbo preset enforcement ---
 React.useEffect(() => {
-  // don't apply presets for Turbo (Turbo has its own preset enforcement)
-  if (isTurbo || willSendLater) return;
+  if (!isTurbo) return;
 
-  // If no preset was explicitly chosen, do nothing.
-  if (!measurePreset) return;
-
-  const preset = MEASURE_PRESETS.find(p => p.value === measurePreset);
-  if (!preset) return;
-
-  // mark that we are programmaticly writing measures so the width/height watcher ignores it
-  settingMeasuresFromPresetRef.current = true;
-
-  try {
-    if (form.getValues('widthMm') !== preset.w) {
-      form.setValue('widthMm', preset.w, { shouldDirty: false });
-    }
-    if (form.getValues('heightMm') !== preset.h) {
-      form.setValue('heightMm', preset.h, { shouldDirty: false });
-    }
-    // remember which preset we applied (used by the width/height watcher)
-    lastPresetAppliedRef.current = preset.value;
-  } finally {
-    // clear the guard on next frame — allow watchers to run, but prevent immediate flip-flop
-    requestAnimationFrame(() => {
-      settingMeasuresFromPresetRef.current = false;
-    });
+  // 1) Finish fixed to Branco
+  if (turboFinishValue && form.getValues('finishKey') !== turboFinishValue) {
+    form.setValue('finishKey', turboFinishValue, { shouldDirty: false });
   }
-}, [measurePreset, isTurbo, willSendLater, form]);
+
+  // 2) Glass fixed to Transparente (or first glass) even though hidden
+  const glassDefault =
+    transparentGlassValue ?? allGlassOptions[0]?.value;
+
+  if (glassDefault && form.getValues('glassTypeKey') !== glassDefault) {
+    form.setValue('glassTypeKey', glassDefault, { shouldDirty: false });
+  }
+
+  // 3) Acrylic fixed to Água Viva (use handler to auto-clear Serigrafia etc.)
+  if (turboAcrylicValue && form.getValues('acrylicKey') !== turboAcrylicValue) {
+    handleAcrylicChange(turboAcrylicValue);
+  }
+
+  // 4) Serigrafia always off
+  if (form.getValues('serigrafiaKey') !== 'nenhum') {
+    form.setValue('serigrafiaKey', 'nenhum', { shouldDirty: false });
+  }
+  if (form.getValues('serigrafiaColor') != null) {
+    form.setValue('serigrafiaColor', undefined, { shouldDirty: false });
+  }
+
+  // 5) Medidas para Turbo
+  //    - dropdown usa presets normais (65x70, 70x75, ... 85x90)
+  //    - Largura = primeiro valor
+  //    - Profundidade = segundo valor
+  //    - Altura fixa = 178.5 cm
+
+  // tenta usar o preset escolhido; se nenhum, fallback para 75x80
+  const currentPreset = measurePreset;
+  const fallbackPreset =
+    MEASURE_PRESETS.find(p => p.value === '75x80') ?? MEASURE_PRESETS[0];
+  const preset =
+    MEASURE_PRESETS.find(p => p.value === currentPreset) ?? fallbackPreset;
+
+  // garantir que o dropdown mostra o preset em uso
+  if (form.getValues('measurePreset') !== preset.value) {
+    form.setValue('measurePreset', preset.value as any, { shouldDirty: false });
+  }
+
+  // largura (cm) = primeiro número do preset
+  if (form.getValues('widthMm') !== preset.w) {
+    form.setValue('widthMm', preset.w, { shouldDirty: false });
+  }
+
+  // profundidade (cm) = segundo número do preset
+  if (form.getValues('depthMm') !== preset.h) {
+    form.setValue('depthMm', preset.h, { shouldDirty: false });
+  }
+
+  // altura (cm) = valor fixo Turbo
+  if (form.getValues('heightMm') !== TURBO_HEIGHT_CM) {
+    form.setValue('heightMm', TURBO_HEIGHT_CM, { shouldDirty: false });
+  }
+
+  // Turbo nunca "envia medidas mais tarde"
+  if (form.getValues('willSendLater')) {
+    form.setValue('willSendLater', false, { shouldDirty: false });
+  }
+}, [
+  isTurbo,
+  measurePreset,            // ⬅️ IMPORTANT: add measurePreset here
+  turboFinishValue,
+  turboAcrylicValue,
+  transparentGlassValue,
+  allGlassOptions,
+  form,
+]);
   // If user chooses "send later", clear preset + measures; when unchecking, restore default if empty
 React.useEffect(() => {
   if (isTurbo) return;
@@ -2329,13 +2378,13 @@ React.useEffect(() => {
 
   {isTurbo ? (
     <div className="space-y-3">
-      <p className="text-sm text-neutral-600">Este modelo tem medidas pré-definidas.</p>
+      <p className="text-sm text-neutral-600">Este modelo tem medidas pré-definidas. Altura: 178.5cm </p>
 
       <div className={`grid gap-3 ${hideDepth ? 'md:grid-cols-1' : 'md:grid-cols-2'}`}>
         <Select
           f={form}
           name="measurePreset"
-          label="Medidas (cm) *"
+          label="Medidas - Largura x Profundidade (cm) *"
           allowEmpty={false}
           options={MEASURE_PRESETS as any}
         />
@@ -2344,8 +2393,8 @@ React.useEffect(() => {
   ) : (
     <div className="space-y-3">
       <p className="mb-3 text-sm text-neutral-600">
-        As medidas não necessitam estar 100% exatas: a nossa equipa <b>desloca-se à sua casa</b>
-        para confirmar antes da produção. Indique valores próximos da realidade para podermos enviar um orçamento o mais preciso possível.
+        As medidas não necessitam estar 100% exatas: a nossa equipa <b>desloca-se à sua casa </b>
+         para confirmar antes da produção. Indique valores próximos da realidade para podermos enviar um orçamento o mais preciso possível.
       </p>
 
       <div className="grid grid-cols-2 gap-3">

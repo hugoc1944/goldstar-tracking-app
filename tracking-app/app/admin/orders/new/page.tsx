@@ -467,6 +467,25 @@ export function NewOrderClient() {
     fixingBarMode: '',
   });
 
+  /* ---------- Measures (admin) ---------- */
+  /** store measurements as strings in cm for UI — convert to mm on submit */
+  const [measures, setMeasures] = useState({ widthCm: '', heightCm: '', depthCm: '' });
+
+  /** Turbo presets (label shown in dropdown). Add/remove presets as you like. 
+      Each preset is width x depth in cm. Height is always 178.5 cm for Turbo. */
+  const TURBO_PRESETS = [
+    { label: '75 x 80', width: 75, depth: 80 },
+    { label: '70 x 75', width: 70, depth: 75 },
+    { label: '80 x 85', width: 80, depth: 85 },
+    { label: '60 x 70', width: 60, depth: 70 },
+  ];
+
+  /** helper to detect turbo */
+  function isTurboModelKeyLocal(key?: string) {
+    if (!key) return false;
+    return canon(key).replace(/_/g,'') === TURBO_MODEL_KEY; // reuse canon + TURBO_MODEL_KEY from file
+  }
+
   // Order meta
   const [initialStatus, setInitialStatus] = useState('PREPARACAO');
   const [eta, setEta] = useState(''); // ISO local datetime string
@@ -661,30 +680,43 @@ export function NewOrderClient() {
     });
   }, [catalog, rule, showAcrylic]);
 
-// Enforce Turbo model special-cases (match Orçamentos behavior)
-useEffect(() => {
-  const isTurbo = isTurboModelKey(details.model);
-  if (!isTurbo) return;
+  // Enforce Turbo model special-cases (match Orçamentos behavior)
+  useEffect(() => {
+    const isTurbo = isTurboModelKey(details.model);
+    if (!isTurbo) return;
 
-  setDetails((prev) => {
-    const next = { ...prev };
+    setDetails((prev) => {
+      const next = { ...prev };
 
-    // 1) Force finish = Branco
-    if (turboFinishValue) next.finish = turboFinishValue;
+      // 1) Force finish = Branco
+      if (turboFinishValue) next.finish = turboFinishValue;
 
-    // 2) Force acrylic = Água Viva (if available)
-    if (turboAcrylicValue) next.acrylic = turboAcrylicValue;
+      // 2) Force acrylic = Água Viva (if available)
+      if (turboAcrylicValue) next.acrylic = turboAcrylicValue;
 
-    // 3) Disable serigrafia: set to 'nenhum' and clear color
-    next.serigraphy = 'nenhum';
-    next.serigrafiaColor = '';
+      // 3) Disable serigrafia: set to 'nenhum' and clear color
+      next.serigraphy = 'nenhum';
+      next.serigrafiaColor = '';
 
-    // 4) (Optional) keep glass untouched but it's hidden in UI - can set to first if not present
-    // if (!next.glassTypeKey && (glassTipos?.[0]?.value)) next.glassTypeKey = glassTipos[0].value;
+      // 4) (Optional) keep glass untouched but it's hidden in UI - can set to first if not present
+      // if (!next.glassTypeKey && (glassTipos?.[0]?.value)) next.glassTypeKey = glassTipos[0].value;
 
-    return next;
-  });
-}, [details.model, turboFinishValue, turboAcrylicValue]);
+      return next;
+    });
+  }, [details.model, turboFinishValue, turboAcrylicValue]);
+
+  // When the model becomes Turbo, prefill measures from first preset if measures are empty
+  useEffect(() => {
+    const turbo = isTurboModelKey(details.model);
+    if (!turbo) return;
+    // only set if admin hasn't already entered measures
+    setMeasures((m) => {
+      const hasAny = (m.widthCm && m.widthCm.trim()) || (m.depthCm && m.depthCm.trim()) || (m.heightCm && m.heightCm.trim());
+      if (hasAny) return m;
+      const preset = TURBO_PRESETS[0];
+      return { widthCm: String(preset.width), depthCm: String(preset.depth), heightCm: '178.5' };
+    });
+  }, [details.model]);
 
   /* ---------- Pre-fill from ?fromClient= ---------- */
   const fromClient = searchParams.get('fromClient');
@@ -793,6 +825,13 @@ const [delivery, setDelivery] = useState({
     setFiles((prev) => prev.filter((x) => x.name !== name));
   }
 
+  // convert cm → mm (integers)
+  const toMm = (cmStr?: string) => {
+    const n = Number((cmStr ?? '').toString().replace(',', '.'));
+    if (!n || Number.isNaN(n)) return undefined;
+    return Math.round(n * 10); // 1 cm = 10 mm; keep integers
+  };
+
   /* ---------- Submit ---------- */
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -801,6 +840,11 @@ const [delivery, setDelivery] = useState({
       return;
     }
     setSubmitting(true);
+
+    const widthMm = toMm(measures.widthCm);
+    const heightMm = toMm(measures.heightCm) ?? (isTurboModelKey(details.model) ? 1785 : undefined);
+    const depthMm = toMm(measures.depthCm);
+
     try {
       // Build a clear payload mirroring the public orçamento options
       const payload = {
@@ -821,7 +865,6 @@ const [delivery, setDelivery] = useState({
           towelColorMode: hasTowel1 ? (details.towelColorMode || undefined) : undefined,
           shelfColorMode: hasShelf  ? (details.shelfColorMode || undefined) : undefined,
 
-          // NEW:
           delivery: {
             deliveryType: delivery.deliveryType,
             housingType:  delivery.housingType || undefined,
@@ -829,11 +872,26 @@ const [delivery, setDelivery] = useState({
             hasElevator:  delivery.hasElevator === '1' ? true : false,
           },
 
+          // mm fields (kept here for consumers that expect them inside `order`)
+          widthMm,
+          heightMm,
+          depthMm,
+
+          // IMPORTANT: initial status must be inside `order` for server validation
           initialStatus,
-          eta: eta || null,
+
           items: [],
           files: files,
         },
+
+        // keep top-level fields too (harmless / compatibility)
+        widthMm,
+        heightMm,
+        depthMm,
+
+        // top-level also OK, but server wants order.initialStatus so include both
+        initialStatus,
+        eta: eta || null,
       };
 
       // Optional: console.log(payload);
@@ -1124,6 +1182,77 @@ const [delivery, setDelivery] = useState({
             </>
           )}
         </section>
+
+        {/* --- Measures / Turbo presets --- */}
+        {(() => {
+          const turbo = isTurboModelKey(details.model);
+          return (
+            <div className="mt-3 rounded-xl border border-neutral-100 bg-white p-3">
+              <div className="mb-2 text-sm font-medium text-neutral-700">Medidas do modelo</div>
+
+              {turbo && (
+                <div className="mb-3">
+                  <label className="block text-xs text-neutral-600 mb-1">Preset Turbo</label>
+                  <select
+                    className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm"
+                    value={`${measures.widthCm}x${measures.depthCm}`}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const [w, d] = v.split('x').map((s) => s ? s.trim() : '');
+                      if (w && d) {
+                        setMeasures({ widthCm: w, depthCm: d, heightCm: '178.5' });
+                      }
+                    }}
+                  >
+                    <option value="custom">Personalizado / Manual</option>
+                    {TURBO_PRESETS.map(p => (
+                      <option key={p.label} value={`${p.width}x${p.depth}`}>{p.label} (altura fixa 178.5 cm)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-2">
+                <label className="text-xs">
+                  <div className="text-[11px] text-neutral-600">Largura (cm)</div>
+                  <input
+                    className="w-full rounded-lg border border-input bg-card px-2 py-1 text-sm"
+                    value={measures.widthCm}
+                    onChange={(e) => setMeasures(m => ({ ...m, widthCm: e.target.value }))}
+                    placeholder="ex: 75"
+                    inputMode="decimal"
+                    />
+                </label>
+
+                <label className="text-xs">
+                  <div className="text-[11px] text-neutral-600">Altura (cm)</div>
+                  <input
+                    className="w-full rounded-lg border border-input bg-card px-2 py-1 text-sm"
+                    value={measures.heightCm}
+                    onChange={(e) => setMeasures(m => ({ ...m, heightCm: e.target.value }))}
+                    placeholder={isTurboModelKey(details.model) ? '178.5 (Turbo)' : 'ex: 178.5'}
+                    inputMode="decimal"
+                    />
+                </label>
+
+                <label className="text-xs">
+                  <div className="text-[11px] text-neutral-600">Profundidade (cm)</div>
+                  <input
+                    className="w-full rounded-lg border border-input bg-card px-2 py-1 text-sm"
+                    value={measures.depthCm}
+                    onChange={(e) => setMeasures(m => ({ ...m, depthCm: e.target.value }))}
+                    placeholder="ex: 80"
+                    inputMode="decimal"
+                    />
+                </label>
+              </div>
+
+              {isTurboModelKey(details.model) && (
+                <div className="mt-2 text-xs text-neutral-500">Nota: para modelos Turbo a altura é fixada a 178.5 cm (1785 mm).</div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Dados de Entrega */}
         <section className="rounded-2xl border border-border bg-card/60 p-6 shadow-card">

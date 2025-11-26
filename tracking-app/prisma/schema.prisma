@@ -39,6 +39,11 @@ model Order {
   floorNumber    Int?
   hasElevator    Boolean?
 
+  // measures in millimetres (mm) - nullable
+  widthMm        Int?
+  heightMm       Int?
+  depthMm        Int? 
+
   confirmedAt          DateTime?        // null until client confirms
   createdFromBudget Budget? @relation(name: "BudgetToOrder")
 

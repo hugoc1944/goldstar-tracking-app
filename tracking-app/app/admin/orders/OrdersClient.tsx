@@ -73,7 +73,7 @@ function Th({ children, className = '' }: { children: React.ReactNode; className
   return <th className={`py-3 text-left font-medium ${className}`}>{children}</th>;
 }
 function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`py-3 ${className}`}>{children}</td>;
+  return <td className={`py-2.5 ${className}`}>{children}</td>;
 }
 
 export default function OrdersClient() {
@@ -626,14 +626,15 @@ useEffect(() => {
                   aria-label="Selecionar todos"
                 />
               </Th>
+
               <SortTh col="shortId" className="w-36 pl-6">ID do pedido</SortTh>
               <SortTh col="customerName">Cliente</SortTh>
               <SortTh col="status">Estado</SortTh>
               <SortTh col="createdAt">Criado em</SortTh>
-              <SortTh col="visitAt">Visita</SortTh>
               <SortTh col="eta">Conclusão</SortTh>
               <SortTh col="model">Modelo</SortTh>
               <SortTh col="city">Localidade</SortTh>
+
               <Th className="w-16 pr-6 text-right">Ações</Th>
             </tr>
           </thead>
@@ -644,7 +645,7 @@ useEffect(() => {
               <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Sem resultados.</td></tr>
             ) : (
               rows.map((r, idx) => (
-              <tr key={r.id} className={idx % 2 ? 'bg-muted/20' : ''}>
+              <tr key={r.id}   className={`hover:bg-muted/30 transition-colors ${idx % 2 ? 'bg-muted/20' : ''}`}>
                 <Td className="pl-6">
                   <input
                     type="checkbox"
@@ -653,35 +654,31 @@ useEffect(() => {
                     aria-label={`Selecionar ${r.shortId}`}
                   />
                 </Td>
-                {/* ID do pedido */}
+
+                {/* ID */}
                 <Td className="pl-6 font-medium text-foreground">{r.shortId}</Td>
 
                 {/* Cliente */}
                 <Td className="text-foreground">{r.customer?.name}</Td>
 
-                {/* Criado em (data + idade) */}
-                <Td className="text-foreground">
-                  {new Date(r.createdAt).toLocaleDateString('pt-PT')}
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    ({Math.ceil((Date.now() - new Date(r.createdAt).getTime()) / 86400000)}d)
-                  </span>
-                </Td>
-
-                {/* Visita */}
-                <Td className="text-foreground">
-                  {r.visitAt ? new Date(r.visitAt).toLocaleDateString('pt-PT') : '-'}
-                </Td>
-
-                {/* Estado  ✅ “Aguarda visita” when PREPARACAO + visitAwaiting */}
+                {/* Estado */}
                 <Td className="text-foreground">
                   {r.status === 'PREPARACAO' && r.visitAwaiting ? (
-                    <span className="inline-flex items-center rounded-full bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium text-yellow-700">
                       <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-yellow-500" />
                       Aguarda visita
                     </span>
                   ) : (
                     <StatusBadge status={r.status} />
                   )}
+                </Td>
+
+                {/* Criado em */}
+                <Td className="text-foreground">
+                  {new Date(r.createdAt).toLocaleDateString('pt-PT')}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    ({Math.ceil((Date.now() - new Date(r.createdAt).getTime()) / 86400000)}d)
+                  </span>
                 </Td>
 
                 {/* Conclusão (ETA) */}
@@ -691,11 +688,13 @@ useEffect(() => {
 
                 {/* Modelo */}
                 <Td className="text-foreground">{r.model ?? 'Diversos'}</Td>
+
                 {/* Localidade */}
                 <Td className="text-foreground">
                   {r.customer?.city ?? '-'}
                   {r.customer?.district ? ` / ${r.customer.district}` : ''}
                 </Td>
+
                 {/* Ações */}
                 <Td className="pr-6 text-right">
                   <button

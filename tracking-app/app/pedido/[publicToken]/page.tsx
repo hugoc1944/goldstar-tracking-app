@@ -62,9 +62,9 @@ type Payload = {
 
 /* ------------------------------- Helpers ------------------------------- */
 const CUSTOM_LABEL: Record<string, string> = {
-  // legacy
+  // legacy -> keep human-friendly names but avoid duplicate "Acrílico / Policarbonato"
   finish: 'Acabamento',
-  acrylic: 'Acrílico / Policarbonato',
+  acrylic: 'Acrílico',                // changed from "Acrílico / Policarbonato"
   serigraphy: 'Serigrafia',
   monochrome: 'Monocromáticos',
   complements: 'Complemento',
@@ -73,7 +73,7 @@ const CUSTOM_LABEL: Record<string, string> = {
   finishKey: 'Acabamento',
   glassTypeKey: 'Vidro / Monocromático',
   handleKey: 'Puxador',
-  acrylicKey: 'Acrílico / Policarbonato',
+  acrylicKey: 'Acrílico',             // keep this simple
   serigrafiaKey: 'Serigrafia',
   serigrafiaColor: 'Cor da Serigrafia',
   complemento: 'Complemento',
@@ -182,6 +182,14 @@ function humanizeModelName(m?: string | null) {
     .join(' ');
   return s;
 }
+
+// --- Turbo detector (same logic as OrcamentoPDF) ---
+function isTurboModelKey(key?: string | null) {
+  if (!key) return false;
+  return String(key).toLowerCase().replace(/[\s_-]+/g, '').startsWith('turbo');
+}
+
+
 function pickUrl(anyVal: any): string | null {
   if (!anyVal) return null;
   if (typeof anyVal === 'string') return anyVal;
@@ -552,11 +560,16 @@ export default function PublicOrderPage({
                   }
 
                   // 3) Customizações selecionadas - ordenadas e sem “Nenhum”
+                  // ---------- Turbo-aware ordered customizations ----------
+                  const cust = base.customizations ?? {};
+                  const isTurbo = isTurboModelKey(base.model ?? (cust as any).modelKey ?? null);
+
+                  // ordered keys to display (we'll special-case glass/acrylic)
                   const ORDERED_KEYS = [
                     'handleKey',
                     'finishKey',
-                    'glassTypeKey',
-                    'acrylicKey',
+                    'glassTypeKey',   // handled specially if Turbo
+                    'acrylicKey',     // handled specially for Turbo (preferred)
                     'serigrafiaKey',
                     'serigrafiaColor',
                     'barColor',
@@ -567,7 +580,6 @@ export default function PublicOrderPage({
                     'complemento',
                   ];
                   const EXCLUDE = new Set([
-                    // não listar aqui
                     'widthMm',
                     'heightMm',
                     'depthMm',
@@ -580,41 +592,41 @@ export default function PublicOrderPage({
                     'modelKey',
                   ]);
 
-                  const cust = base.customizations ?? {};
-                  // ordered pass
                   for (const k of ORDERED_KEYS) {
-                    if (!(k in cust) || EXCLUDE.has(k)) continue;
+                    if (EXCLUDE.has(k)) continue;
+
+                    // Turbo: hide glassTypeKey and Barra de Fixação (fixingBarMode);
+                    // prefer Acrylic row instead
+                    if (isTurbo && (k === 'glassTypeKey' || k === 'fixingBarMode')) continue;
+
+                    if (k === 'acrylicKey' && isTurbo) {
+                      // Turbo-specific acrylic row: show acrylicKey or fallback to "Água Viva"
+                      const raw = (cust as any)[k];
+                      const fv = formatCustomizationValue(k, raw);
+                      const value = fv && fv !== '-' ? fv : 'Água Viva';
+                      rows.push({ label: 'Acrílico', value });
+                      seen.add('acrylic');
+                      seen.add('acrylicKey');
+                      continue;
+                    }
+
+                    if (!(k in cust)) continue;
                     const fv = formatCustomizationValue(k, (cust as any)[k]);
                     if (k === 'complemento' && seen.has('complemento')) continue;
                     if (!fv || fv === 'Nenhum' || fv === '-') continue;
+
                     rows.push({ label: CUSTOM_LABEL[k] ?? k, value: fv });
                   }
-                  // any remaining keys (but not excluded)
+
+                  // any remaining custom keys (not in ORDERED_KEYS)
                   for (const [k, v] of Object.entries(cust)) {
-                    if (EXCLUDE.has(k) || ORDERED_KEYS.includes(k)) continue;
+                    if (EXCLUDE.has(k) || ORDERED_KEYS.includes(k) || seen.has(k)) continue;
                     const fv = formatCustomizationValue(k, v);
                     if (!fv || fv === 'Nenhum' || fv === '-') continue;
                     rows.push({ label: CUSTOM_LABEL[k] ?? k, value: fv });
                   }
 
-                  // 4) Preço(s) no fim
-                  const asNumber = (x: any) => {
-                    if (x == null) return null;
-                    const n = typeof x === 'string' ? Number(x) : x;
-                    return typeof n === 'number' && !Number.isNaN(n) ? n : null;
-                  };
-                  const priceCents =
-                    asNumber((cust as any).priceCents) ?? (asNumber((base as any).priceCents) ?? null);
-                  const installCents =
-                    asNumber((cust as any).installPriceCents) ??
-                    (asNumber((base as any).installPriceCents) ?? null);
-
-                  if (installCents != null) {
-                    rows.push({ label: 'Preço de instalação', value: fmtEUR(installCents) });
-                  }
-                  if (priceCents != null) {
-                    rows.push({ label: 'Preço', value: fmtEUR(priceCents) });
-                  }
+                  
 
                   return rows.length ? (
                     <ul className="space-y-1 text-[14px]">
@@ -648,8 +660,45 @@ export default function PublicOrderPage({
 
                   const toCm = (mm?: number | null) => (mm == null ? '-' : `${Math.round(mm / 10)} cm`);
 
+                  // --- NOVO: preços para mostrar aqui ---
+                  const asNumber = (x: any): number | null => {
+                    if (x == null) return null;
+                    const n = typeof x === 'string' ? Number(x) : x;
+                    return typeof n === 'number' && !Number.isNaN(n) ? n : null;
+                  };
+
+                  const priceCents =
+                    asNumber((cust as any).priceCents) ??
+                    asNumber((base as any)?.priceCents);
+
+                  const installCents =
+                    asNumber((cust as any).installPriceCents) ??
+                    asNumber((base as any)?.installPriceCents);
+
                   return (
                     <div className="grid gap-4 md:grid-cols-1">
+                      {/* Valores do Orçamento */}
+                      {(priceCents != null || installCents != null) && (
+                        <div className="rounded-lg bg-white/60 p-3">
+                          <h5 className="mb-1 text-xs font-semibold text-neutral-700 uppercase tracking-wide">
+                            Valores do Orçamento
+                          </h5>
+                          <ul className="space-y-1 text-[14px]">
+                            {installCents != null && (
+                              <li>
+                                <span className="font-medium">Preço de instalação:</span>{' '}
+                                {fmtEUR(installCents)}
+                              </li>
+                            )}
+                            {priceCents != null && (
+                              <li>
+                                <span className="font-medium">Preço:</span> {fmtEUR(priceCents)}
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
+
                       {/* Medidas */}
                       <div className="rounded-lg bg-white/60 p-3">
                         <h5 className="mb-1 text-xs font-semibold text-neutral-700 uppercase tracking-wide">
