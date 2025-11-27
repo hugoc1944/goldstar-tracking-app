@@ -11,6 +11,7 @@ import type { SubmitHandler, Resolver } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import Image from 'next/image';
 import { Suspense } from 'react';
+declare const grecaptcha: any;
 
 function uniqByValue(items: {value:string; label:string; order?:number}[]) {
   const seen = new Set<string>();
@@ -715,6 +716,11 @@ export const PublicBudgetSchema = z.object({
   photoUrls: z.array(z.string().url()).optional(),
 
   notes: z.string().optional(),
+
+  agreePrivacy: z.literal(true).refine(v => v === true, {
+    message: "É necessário aceitar a Política de Privacidade."
+  }),
+  recaptchaToken: z.string().optional(),
   })
   .superRefine((val, ctx) => {
     // medidas
@@ -1531,7 +1537,20 @@ React.useEffect(() => {
     }
   }
 
-  const onSubmit: SubmitHandler<FormValues> = async (values) => {
+const onSubmit: SubmitHandler<FormValues> = async (values) => {
+    if (submitting || locked) return;
+    setSubmitting(true);
+
+    // 🔐 reCAPTCHA v3 token
+    let token = "";
+    try {
+      token = await grecaptcha.execute("6LcDChosAAAAAI3VgEEG-0WA0VHG7JYi8Y7wqvFd", { action: "submit" });
+      form.setValue("recaptchaToken", token, { shouldDirty: false });
+    } catch (err) {
+      alert("Não foi possível validar o reCAPTCHA. Por favor tente novamente.");
+      setSubmitting(false);
+      return;
+    }
     // If we are already submitting or locked, ignore any further submits.
     if (submitting || locked) return;
 
@@ -1544,6 +1563,8 @@ React.useEffect(() => {
       widthMm:  toMm(values.widthMm),
       heightMm: toMm(values.heightMm),
       depthMm:  toMm(values.depthMm),
+      recaptchaToken: values.recaptchaToken,
+
     };
 
     try {
@@ -2510,6 +2531,25 @@ React.useEffect(() => {
         </section>
 
         <div className="pt-2 space-y-2">
+          {/* Aceitação da política de privacidade */}
+          <div className="w-full flex">
+            <Checkbox
+              f={form}
+              name="agreePrivacy"
+              label={
+                <>
+                  Ao enviar, concordo com a{" "}
+                  <a
+                    href="https://mfn.pt/politica-privacidade/"
+                    target="_blank"
+                    className="underline"
+                  >
+                    Política de Privacidade
+                  </a>.
+                </>
+              }
+            />
+          </div>
           <button
             type="submit"
             disabled={submitting || locked}
@@ -2535,7 +2575,39 @@ React.useEffect(() => {
         </div>
       </form>
     </section>
+    <footer className="mt-10 text-center text-sm text-neutral-500 leading-relaxed mb-10">
+      <p>
+        MFN LDA © {new Date().getFullYear()}. Todos os direitos reservados ·{" "}
+        <a
+          href="https://mfn.pt/politica-privacidade/"
+          className="underline"
+          target="_blank"
+        >
+          Política de Privacidade
+        </a>{" "}
+        ·{" "}
+        <a
+          href="https://mfn.pt/politica-cookies/"
+          className="underline"
+          target="_blank"
+        >
+          Política de Cookies
+        </a>{" "}
+        ·{" "}
+        <a href="#" className="cky-banner-element underline">
+          Alterar Preferências de Cookies
+        </a>
+      </p>
+
+      <p className="mt-1 text-xs text-neutral-400">
+        Este site é protegido pelo reCAPTCHA e aplicam-se a Política de Privacidade
+        e os Termos de Serviço da Google.
+      </p>
+    </footer>
+
+
   </main>
+  
 );
 }
 
@@ -2578,12 +2650,30 @@ function Textarea({ f, name, label, rows=3 }:{ f:any; name:string; label?:string
   );
 }
 
-function Checkbox({ f, name, label }:{ f:any; name:string; label?:string }) {
-  const { register } = f;
+function Checkbox({
+  f,
+  name,
+  label,
+}: {
+  f: any;
+  name: string;
+  label: React.ReactNode;
+}) {
+  const {
+    register,
+    formState: { errors },
+  } = f;
+
+  const hasError = !!errors?.[name];
+
   return (
-    <label className="inline-flex items-center gap-2">
-      <input type="checkbox" {...register(name)} />
-      <span>{label}</span>
+    <label
+      className={`inline-flex items-start gap-2 ${
+        hasError ? "blink-error" : ""
+      }`}
+    >
+      <input type="checkbox" {...register(name)} className="mt-1" />
+      <span className="text-sm">{label}</span>
     </label>
   );
 }

@@ -14,6 +14,21 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt">
+      <head>
+        {/* CookieYes banner */}
+        <script
+          id="cookieyes"
+          type="text/javascript"
+          src="https://cdn-cookieyes.com/client_data/278ef3f1a4d4621e4570f6c6924289e9/script.js"
+          defer
+        ></script>
+        {/* ReCAPTCHA banner */}
+        <script
+          src="https://www.google.com/recaptcha/api.js?render=6LcDChosAAAAAI3VgEEG-0WA0VHG7JYi8Y7wqvFd"
+          async
+          defer
+        ></script>
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased min-h-screen`}>
         <Providers>{children}</Providers> {/* <-- wrap everything */}
       </body>
