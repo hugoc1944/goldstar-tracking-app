@@ -4,6 +4,12 @@ import Image from 'next/image';
 import { signIn } from 'next-auth/react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState('');

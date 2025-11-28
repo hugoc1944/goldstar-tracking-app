@@ -6,6 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import AdminShell from '@/components/admin/AdminShell';
 import React from 'react';
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 /* ===========================================================
    Types & small helpers

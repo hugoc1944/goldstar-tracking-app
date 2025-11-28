@@ -13,6 +13,25 @@ import Image from 'next/image';
 import { Suspense } from 'react';
 declare const grecaptcha: any;
 
+export const metadata = {
+  title: "Pedir Orçamento GOLDSTAR | MFN",
+  description: "Peça o seu orçamento personalizado para um resguardo GOLDSTAR. Seleccione modelo, medidas e opções e receba um orçamento rápido.",
+  robots: {
+    index: true,
+    follow: true,
+  },
+  alternates: {
+    canonical: "https://tracking.mfn.pt/orcamentos/novo",
+  },
+  openGraph: {
+    title: "Pedir Orçamento GOLDSTAR",
+    description: "Formulário oficial de pedido de orçamento GOLDSTAR.",
+    url: "https://tracking.mfn.pt/orcamentos/novo",
+    siteName: "MFN",
+  },
+};
+
+
 function uniqByValue(items: {value:string; label:string; order?:number}[]) {
   const seen = new Set<string>();
   const out: typeof items = [];
@@ -1541,6 +1560,12 @@ const onSubmit: SubmitHandler<FormValues> = async (values) => {
     if (submitting || locked) return;
     setSubmitting(true);
 
+    if (typeof window !== "undefined" && window.gtag) {
+      window.gtag('event', 'pedir_orcamento_click', {
+        page: 'orcamentos_novo',
+      });
+    }
+    
     // 🔐 reCAPTCHA v3 token
     let token = "";
     try {

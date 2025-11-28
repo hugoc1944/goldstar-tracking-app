@@ -1,6 +1,12 @@
 import { Suspense } from 'react';
 import AdminShell from '@/components/admin/AdminShell';
 import OrdersClient from './OrdersClient';
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default function Page() {
   return (

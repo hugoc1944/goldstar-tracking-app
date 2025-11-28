@@ -2,6 +2,14 @@ import * as React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
+
+
 // Opt out of static rendering and caching (safe for success pages with query params)
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;

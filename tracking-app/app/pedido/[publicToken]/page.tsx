@@ -3,6 +3,14 @@
 import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
 
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
+
+
 /* Goldstar mini spinner (reuse) */
 function GsSpinner({ size = 16, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
   const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;

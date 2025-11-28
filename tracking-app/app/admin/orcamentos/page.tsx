@@ -4,6 +4,12 @@ import { headers } from 'next/headers';
 import { requireAdminSession } from '@/lib/auth-helpers';
 import AdminShell from '@/app/components/admin/AdminShell';
 import ConfirmDeleteButton from './ConfirmDeleteButton';
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 async function fetchBudgets({ q, includeDeleted }: { q?: string; includeDeleted?: boolean }) {
   const sp = new URLSearchParams();

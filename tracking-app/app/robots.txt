@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /orcamentos/novo
+Disallow: /admin
+Disallow: /admin/
+Disallow: /pedido
+Disallow: /pedido/
+Disallow: /pedido/*
+Sitemap: https://tracking.mfn.pt/sitemap.xml

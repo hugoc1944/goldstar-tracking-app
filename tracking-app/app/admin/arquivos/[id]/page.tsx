@@ -2,6 +2,12 @@
 
 import {use, useEffect, useRef, useState } from 'react';
 import AdminShell from '@/components/admin/AdminShell';
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 function GsSpinner({ size = 14, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
   const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;

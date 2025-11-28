@@ -2,6 +2,12 @@ import { requireAdminSession } from '@/lib/auth-helpers';
 import { prisma } from '@/lib/prisma';
 import AdminBudgetEditor from './AdminBudgetEditor';
 import AdminShell from '@/app/components/admin/AdminShell';
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 type Search = Record<string, string | string[] | undefined>;
 
