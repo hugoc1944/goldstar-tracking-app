@@ -15,6 +15,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt">
       <head>
+        {/* Google site verification */}
+        <meta name="google-site-verification" content="wcCbqLyIRxWhIAZl_DNja7RH57Kc2UQI1tmNsIlFd8A" />
         {/* CookieYes banner */}
         <script
           id="cookieyes"
