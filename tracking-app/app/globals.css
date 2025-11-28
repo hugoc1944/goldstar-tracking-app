@@ -156,3 +156,10 @@
   border-radius: 6px;
   padding: 4px;
 }
+
+.grecaptcha-badge {
+  visibility: hidden !important;
+}
+.cky-btn-revisit-wrapper{
+	visibility: hidden !important;
+}
