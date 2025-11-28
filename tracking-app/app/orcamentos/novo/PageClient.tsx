@@ -1546,7 +1546,7 @@ const onSubmit: SubmitHandler<FormValues> = async (values) => {
         page: 'orcamentos_novo',
       });
     }
-    
+    console.log('AAAAA'+window.gtag)
     // 🔐 reCAPTCHA v3 token
     let token = "";
     try {
