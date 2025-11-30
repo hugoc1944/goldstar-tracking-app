@@ -4,24 +4,51 @@ import { prisma } from '../lib/prisma';
 import bcrypt from 'bcrypt';
 
 async function main() {
-  const email = process.env.SEED_ADMIN_EMAIL || 'admin@example.com';
-  const password = process.env.SEED_ADMIN_PASSWORD || 'ChangeMe123!';
-  const hash = await bcrypt.hash(password, 10);
+  // --- Admin 1 (existing) ---
+  const primaryEmail = process.env.SEED_ADMIN_EMAIL || 'admin@example.com';
+  const primaryPassword = process.env.SEED_ADMIN_PASSWORD || 'ChangeMe123!';
 
-  const user = await prisma.adminUser.upsert({
-    where: { email: email.toLowerCase() },
-    update: {},
-    create: {
-      email: email.toLowerCase(),
-      passwordHash: hash,
-      role: 'admin',
+  // --- Admin 2 (new) – only if both env vars exist ---
+  const secondaryEmail = process.env.ADMIN2_EMAIL;
+  const secondaryPassword = process.env.ADMIN2_PASSWORD;
+
+  const admins: { email: string; password: string }[] = [
+    {
+      email: primaryEmail.toLowerCase(),
+      password: primaryPassword,
     },
-  });
+  ];
 
-  console.log('Admin ready:', user.email);
-  console.log('Password:', password);
+  if (secondaryEmail && secondaryPassword) {
+    admins.push({
+      email: secondaryEmail.toLowerCase(),
+      password: secondaryPassword,
+    });
+  }
+
+  for (const admin of admins) {
+    const hash = await bcrypt.hash(admin.password, 10);
+
+    const user = await prisma.adminUser.upsert({
+      where: { email: admin.email },
+      // keep same behaviour as before: don't change password if it already exists
+      update: {},
+      create: {
+        email: admin.email,
+        passwordHash: hash,
+        role: 'admin',
+      },
+    });
+
+    console.log('Admin ready:', user.email);
+    console.log('Password:', admin.password);
+    console.log('--------------------------');
+  }
 }
 
 main()
   .then(() => process.exit(0))
-  .catch((e) => { console.error(e); process.exit(1); });
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
