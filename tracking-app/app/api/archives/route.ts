@@ -28,7 +28,8 @@ type EventWithOrder = {
 export async function GET(req: Request) {
   await requireAdminSession();
 
-  const { searchParams } = new URL(req.url);
+  const url = new URL(req.url);
+  const searchParams = url.searchParams;
   const search = (searchParams.get('search') || '').trim();
   const sort = (searchParams.get('sort') || 'newest') === 'oldest' ? 'oldest' : 'newest';
   const take = Math.min(Math.max(Number(searchParams.get('take') || 20), 1), 100);
@@ -57,6 +58,40 @@ export async function GET(req: Request) {
       where.OR = [{ at: { lt: cursor.at } }, { at: cursor.at, id: { lt: cursor.eid } }];
     } else {
       where.OR = [{ at: { gt: cursor.at } }, { at: cursor.at, id: { gt: cursor.eid } }];
+    }
+  }
+
+// ---- NEW: month / year filter for reporting ----
+  const yearParam = url.searchParams.get('year');
+  const monthParam = url.searchParams.get('month'); // "1".."12" or ""
+
+  if (yearParam) {
+    const y = Number(yearParam);
+    if (!Number.isNaN(y) && y > 1900 && y < 3000) {
+      let start: Date;
+      let end: Date;
+
+      if (monthParam) {
+        const m = Number(monthParam); // 1..12
+        if (!Number.isNaN(m) && m >= 1 && m <= 12) {
+          // JS months are 0-based
+          start = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+          end =
+            m === 12
+              ? new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0))
+              : new Date(Date.UTC(y, m, 1, 0, 0, 0));
+        } else {
+          // invalid month, fallback to full year
+          start = new Date(Date.UTC(y, 0, 1, 0, 0, 0));
+          end = new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0));
+        }
+      } else {
+        // only year -> full year
+        start = new Date(Date.UTC(y, 0, 1, 0, 0, 0));
+        end = new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0));
+      }
+
+      where.at = { gte: start, lt: end };
     }
   }
 

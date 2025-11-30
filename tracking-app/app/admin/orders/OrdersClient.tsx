@@ -155,13 +155,39 @@ export default function OrdersClient() {
 
   const [creating, setCreating] = useState(false);
   useEffect(() => { router.prefetch('/admin/orders/new'); }, [router]);
-
+  // Load quick stats
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setStatsLoading(true);
+        const res = await fetch('/api/orders/stats', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Falha ao carregar estatísticas');
+        const data = await res.json();
+        if (!alive) return;
+        setStats(data);
+      } catch (e) {
+        console.warn('Erro a carregar /orders/stats', e);
+      } finally {
+        if (alive) setStatsLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
   // data state
   const [rows, setRows] = useState<OrderRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
+  // Quick pipeline stats
+  const [stats, setStats] = useState<{
+    PREPARACAO: number;
+    PRODUCAO: number;
+    EXPEDICAO: number;
+    ENTREGUE: number;
+  } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   // modals
   const [actionsFor, setActionsFor] = useState<{ id: string; status: Status } | null>(null);
@@ -485,25 +511,31 @@ useEffect(() => {
 
   // load model filter options
   const [modelOpts, setModelOpts] = useState<{ value: string; label: string }[]>([]);
+
   useEffect(() => {
     let alive = true;
+
     (async () => {
-      const r = await fetch('/api/catalog?category=MODEL&flat=1');
-      if (!alive) return;
+      try {
+        const res = await fetch('/api/catalog', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
 
-      if (r.ok) {
-        const list = await r.json();
+        const models = data?.MODEL ?? [];
 
-        const opts = Array.isArray(list)
-          ? list.map((m: any) => ({
-              value: m.value || m.key || m.id,
-              label: m.label || m.name || m.value,
-            }))
-          : [];
+        if (!alive) return;
+
+        const opts = models.map((m: any) => ({
+          value: m.value || m.key || m.id,
+          label: m.label || m.name || m.value,
+        }));
 
         setModelOpts(opts);
+      } catch (err) {
+        console.warn('Failed loading models catalog', err);
       }
     })();
+
     return () => {
       alive = false;
     };
@@ -537,7 +569,52 @@ useEffect(() => {
           )}
         </button>
       </header>
+      {/* Quick stats bar */}
+      <div className="mb-4 flex flex-wrap items-center gap-3 text-xs sm:text-sm text-muted-foreground">
+        <div className="inline-flex items-center gap-2 rounded-full bg-muted/40 px-3 py-1">
+          <span className="h-2 w-2 rounded-full bg-zinc-500" />
+          <span>
+            Em preparação:{' '}
+            <span className="font-semibold text-foreground">
+              {stats ? stats.PREPARACAO : '–'}
+            </span>
+          </span>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full bg-muted/40 px-3 py-1">
+          <span className="h-2 w-2 rounded-full bg-blue-500" />
+          <span>
+            Em produção:{' '}
+            <span className="font-semibold text-foreground">
+              {stats ? stats.PRODUCAO : '–'}
+            </span>
+          </span>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full bg-muted/40 px-3 py-1">
+          <span className="h-2 w-2 rounded-full bg-amber-500" />
+          <span>
+            Em expedição:{' '}
+            <span className="font-semibold text-foreground">
+              {stats ? stats.EXPEDICAO : '–'}
+            </span>
+          </span>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full bg-muted/40 px-3 py-1">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span>
+            Entregues:{' '}
+            <span className="font-semibold text-foreground">
+              {stats ? stats.ENTREGUE : '–'}
+            </span>
+          </span>
+        </div>
 
+        {statsLoading && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+            <GsSpinner size={12} />
+            a atualizar…
+          </span>
+        )}
+      </div>
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <select

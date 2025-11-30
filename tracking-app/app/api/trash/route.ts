@@ -104,16 +104,23 @@ export async function GET(req: Request) {
       createdAt: c.createdAt ? c.createdAt.toISOString() : null,
       source: "Clientes",
     })),
-    ...orders.map((o) => ({
-      type: "order" as const,
-      id: o.id,
-      name: o.customer?.name ?? "",
-      email: "",
-      extra: `Estado: ${o.status}`,
-      deletedAt: o.deletedAt ? o.deletedAt.toISOString() : null,
-      createdAt: o.createdAt ? o.createdAt.toISOString() : null,
-      source: "Pedidos",
-    })),
+   ...orders.map((o) => {
+    const source =
+        o.status === "ENTREGUE"
+        ? "Arquivos"      // came from Archives
+        : "Pedidos";       // came from active Orders
+
+    return {
+        type: "order" as const,
+        id: o.id,
+        name: o.customer?.name ?? "",
+        email: "",
+        extra: `Estado: ${o.status}`,
+        deletedAt: o.deletedAt ? o.deletedAt.toISOString() : null,
+        createdAt: o.createdAt ? o.createdAt.toISOString() : null,
+        source,
+    };
+    }),
     ...budgets.map((b) => ({
       type: "budget" as const,
       id: b.id,

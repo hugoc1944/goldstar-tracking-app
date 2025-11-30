@@ -23,6 +23,7 @@ type Row = {
   name: string;
   email: string;
   ordersCount: number;
+  lastOrderAt: string | null;
   status: 'Novo cliente' | 'Cliente usual';
 };
 
@@ -64,34 +65,44 @@ function ClientsPageInner() {
   const initialQ = sp.get('q') ?? '';
   const [q, setQ] = useState(initialQ);
   const debouncedQ = useDebounced(q, 350);
+  const [sort, setSort] = useState<'best' | 'recent' | 'name'>(
+    ((sp.get('sort') as any) || 'best')
+  );
   const [trashPendingId, setTrashPendingId] = useState<string | null>(null);
   const [data, setData] = useState<ClientsPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   useEffect(() => { router.prefetch('/admin/clients/new'); }, [router]);
 
-  // sync query to URL + fetch first page whenever search changes
+  // sync query to URL + fetch first page whenever search/sort changes
   useEffect(() => {
     const usp = new URLSearchParams();
     if (debouncedQ.trim()) usp.set('q', debouncedQ.trim());
+    if (sort && sort !== 'best') usp.set('sort', sort); // 'best' is implicit default
+
     router.replace(usp.toString() ? `/admin/clients?${usp}` : '/admin/clients');
-    void fetchPage(debouncedQ.trim(), null);
+    void fetchPage(debouncedQ.trim(), null, sort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQ]);
+  }, [debouncedQ, sort]);
 
   // initial load (SSR URL may already have q)
   useEffect(() => {
-    void fetchPage(initialQ, null);
+    void fetchPage(initialQ, null, sort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function fetchPage(search: string, cur: string | null) {
+  async function fetchPage(
+    search: string,
+    cur: string | null,
+    sortMode: 'best' | 'recent' | 'name'
+  ) {
     setLoading(true);
     try {
       const url = new URL('/api/clients', window.location.origin);
       if (search) url.searchParams.set('search', search);
       if (cur) url.searchParams.set('cursor', cur);
       url.searchParams.set('take', '20');
+      if (sortMode) url.searchParams.set('sort', sortMode);
 
       const r = await fetch(url.toString(), { cache: 'no-store' });
       if (!r.ok) throw new Error('load failed');
@@ -117,7 +128,7 @@ function ClientsPageInner() {
       }
 
       // re-carregar primeira página com o filtro atual
-      await fetchPage(debouncedQ.trim(), null);
+      await fetchPage(debouncedQ.trim(), null, sort);
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? 'Erro ao enviar cliente para a lixeira.');
@@ -129,7 +140,7 @@ function ClientsPageInner() {
   function mergePage(prev: ClientsPayload | null, next: ClientsPayload): ClientsPayload {
     if (!prev) return next;
     return {
-      rows: [...prev.rows, ...next.rows],
+      rows: [...prev.rows, ...(next.rows || [])],
       total: next.total,
       nextCursor: next.nextCursor,
     };
@@ -137,7 +148,7 @@ function ClientsPageInner() {
 
   function loadMore() {
     if (!data?.nextCursor) return;
-    void fetchPage(debouncedQ.trim(), data.nextCursor);
+    void fetchPage(debouncedQ.trim(), data.nextCursor, sort);
   }
 
   return (
@@ -165,6 +176,17 @@ function ClientsPageInner() {
               className="w-full rounded-lg border border-border bg-surface pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
+
+        {/* sort */}
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as 'best' | 'recent' | 'name')}
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-xs sm:text-sm outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="best">Melhores clientes</option>
+            <option value="recent">Último pedido (mais recente)</option>
+            <option value="name">Nome (A-Z)</option>
+          </select>
 
           <button
             type="button"
@@ -201,6 +223,7 @@ function ClientsPageInner() {
               <Th>Email</Th>
               <Th>Status</Th>
               <Th>Pedidos</Th>
+              <Th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide">Último pedido</Th>
               <Th className="w-16 pr-6 text-right">Ações</Th>
             </tr>
           </thead>
@@ -227,6 +250,13 @@ function ClientsPageInner() {
                     <ClientStatusBadge status={c.status} />
                   </Td>
                   <Td className="text-foreground">{c.ordersCount}</Td>
+                  <Td className="text-foreground">
+                    {c.lastOrderAt ? (
+                      new Date(c.lastOrderAt).toLocaleDateString('pt-PT')
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sem pedidos</span>
+                    )}
+                  </Td>
                   <Td className="pr-6 text-right">
                     <div className="inline-flex items-center justify-end gap-2">
                       {/* Send to trash */}
