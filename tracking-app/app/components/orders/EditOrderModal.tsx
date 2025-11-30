@@ -12,6 +12,9 @@ type ModelRuleDTO = {
   hasFixingBar?: boolean;
 };
 
+
+
+
 function isPainelV234(key?: string) {
   if (!key) return false;
   return /painel[_-]?v(2|3|4)\b/i.test(key.toLowerCase());
@@ -35,25 +38,6 @@ async function uploadFile(f: File): Promise<UploadInfo> {
 }
 
 
-// Normalize model string ("diplomatagold_v1", "Diplomata Gold V1") → "DiplomataGold_V1"
-const MODEL_CANON: Record<string, string> = {
-  sterling: 'Sterling',
-  diplomatagold: 'DiplomataGold',
-  diplomatapivotante: 'DiplomataPivotante',
-  europa: 'Europa',
-  strong: 'Strong',
-  painel: 'Painel',
-  painelfixo: 'PainelFixo',
-  algarve: 'Algarve',
-  meioalgarve: 'MeioAlgarve',
-  meialua: 'MeiaLua',
-  lasvegas: 'LasVegas',
-  florida: 'Florida',
-  splash: 'Splash',
-  turbo: 'Turbo',
-  fole: 'Fole',
-  foleap: 'FoleAP',
-};
 
 // -------------------------------------------------
 // Helpers reused from other files: canon + Turbo detector
@@ -89,6 +73,275 @@ function simModelParamFromKey(input: string | undefined) {
 
   return v ? `${canonical}_V${v}` : canonical;
 }
+/* ========== PREVIEW ICON HELPERS + IconSelect from Orçamentos (paste here) ========== */
+
+const PRE = '/previews';
+
+// --- model stem/icon helpers (robust canonicalization) ---
+function capToken(tok: string) {
+  return tok.replace(/^(\d*)([a-zA-Z])(.*)$/, (_m, d, c, rest) => `${d}${c.toUpperCase()}${rest.toLowerCase()}`);
+}
+const MODEL_CANON: Record<string, string> = {
+  sterling: 'Sterling',
+  diplomatagold: 'DiplomataGold',
+  diplomatapivotante: 'DiplomataPivotante',
+  europa: 'Europa',
+  strong: 'Strong',
+  painel: 'Painel',
+  painelfixo: 'PainelFixo',
+  algarve: 'Algarve',
+  meioalgarve: 'MeioAlgarve',
+  meialua: 'MeiaLua',
+  lasvegas: 'LasVegas',
+  florida: 'Florida',
+  splash: 'Splash',
+  turbo: 'Turbo',
+  fole: 'Fole',
+  foleap: 'FoleAP',
+};
+function modelStemFromAny(input: string) {
+  const s = input.replace(/-/g, '_').replace(/\s+/g, '_').trim();
+  const m = s.match(/^(.*?)(?:_)?v(\d+)$/i);
+  let base = (m ? m[1] : s).replace(/_/g, '');
+  const v = m ? m[2] : undefined;
+  const lower = base.toLowerCase();
+  const canonical = MODEL_CANON[lower] ?? base
+    .split(/(?=[A-Z])/)
+    .join('')
+    .split(/(\d+|[a-zA-Z]+)/g)
+    .filter(Boolean)
+    .map(capToken)
+    .join('');
+  return v ? `${canonical}_V${v}` : canonical;
+}
+const modelIconSrc = (valueOrLabel: string) => `${PRE}/models/${modelStemFromAny(valueOrLabel)}.png`;
+
+// --- finish icon map ---
+const FINISH_FILE_MAP: Record<string, string> = {
+  amarelo: "Amarelo", anodizado: "Anodizado", azulclaro: "AzulClaro", azulescuro: "AzulEscuro",
+  azulturquesa: "AzulTurquesa", bordeaux: "Bordeaux", branco: "Branco", brancomate: "BrancoMate",
+  castanho: "Castanho", cinza: "Cinza", cremelclaro: "CremeClaro", cremeescuro: "CremeEscuro",
+  cromado: "Cromado", dourado: "Dourado", gunmetal: "GunMetal", preto: "Preto", pretomate: "PretoMate",
+  pretofosco: "PretoFosco", rosa: "Rosa", verdeagua: "VerdeAgua", verdefloresta: "VerdeFloresta", vermelho: "Vermelho",
+};
+const finishIconSrc = (name: string) => {
+  if (!name) return undefined;
+  const key = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[\s_-]/g, '');
+  const stem = FINISH_FILE_MAP[key];
+  if (!stem) return undefined;
+  return `${PRE}/finishes/${stem}.png`;
+};
+
+// --- handles ---
+function handleIconSrc(value?: string) {
+  if (!value || value === '') return `${PRE}/handles/default.png`;
+  if (/^h(\d)$/i.test(value)) return `${PRE}/handles/Handle_${value.replace(/^h/i,'')}.png`;
+  if (value.toLowerCase() === 'sem') return `${PRE}/handles/none.png`;
+  return `${PRE}/handles/default.png`;
+}
+
+// --- glass/acrylic/serigrafia helpers ---
+function labelToStem(label: string) {
+  return label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_-]+/g, '');
+}
+const glassIconSrcFromLabel = (label: string) => `${PRE}/glass/vidros/${labelToStem(label)}.png`;
+const acrylicIconSrcFromLabel = (label: string) => `${PRE}/acrylics/${labelToStem(label)}.png`;
+function silkIdFrom(value?: string, label?: string) {
+  const s = (value || label || '').trim();
+  const mSer = s.match(/ser[\s_-]*0*(\d+)/i);
+  if (mSer) return `SER${mSer[1].padStart(3,'0')}`;
+  const mNamed = s.match(/(Quadro|Elo|Sereno)\s*0*(\d+)/i);
+  if (mNamed) { const name = mNamed[1][0].toUpperCase() + mNamed[1].slice(1).toLowerCase(); return `${name}${mNamed[2]}`; }
+  // fallback: Pascalize
+  return s.replace(/[\s_-]+/g, '').replace(/^\w/, c => c.toUpperCase());
+}
+const silkIconFromOpt = (opt: { value: string; label: string }) => `${PRE}/glass/silks/${silkIdFrom(opt.value, opt.label)}.png`;
+
+// --- complemento icons + vision bar preview ---
+function complementoIconSrc(value: string) {
+  const v = value.toLowerCase();
+  if (v === 'vision') return `${PRE}/toalheiros/Vision.png`;
+  if (v === 'toalheiro1') return `${PRE}/toalheiros/Toalheiro1.png`;
+  if (v === 'prateleira') return `${PRE}/shelf/Prateleira.png`;
+  return '';
+}
+function visionBarIconSrc(value: string) {
+  const v = (value || '').toLowerCase();
+  if (v === 'glass' || v === 'vidro' || v === 'transparente') return `${PRE}/glass/vidros/Transparente.png`;
+  if (v === 'white' || v === 'branco' || v === 'branco_mate') return `${PRE}/finishes/BrancoMate.png`;
+  if (v === 'black' || v === 'preto' || v === 'preto_mate' || v === 'pretofosco') return `${PRE}/finishes/PretoMate.png`;
+  return `${PRE}/finishes/${value ? value.replace(/[\s_-]+/g,'') : ''}.png`;
+}
+
+// --- TinyIcon (tries multiple filename-casing variants) ---
+function TinyIcon({ src, alt, size = 20 }: { src?: string; alt: string; size?: number }) {
+  if (!src) {
+    return <span className="inline-block rounded-[6px] bg-neutral-200/70" style={{ width: size, height: size }} aria-hidden />;
+  }
+  // iterate candidate filename variants (simple approach)
+  const exts = ['png','jpg','jpeg','webp'];
+  const base = src.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+  const variants = [base, base.replace(/_V(\d+)$/,'V$1'), base.toLowerCase(), base.replace(/_/g,'')].flatMap(s => exts.map(e => `${s}.${e}`));
+  const [idx, setIdx] = React.useState(0);
+  if (idx >= variants.length) {
+    return <span className="inline-block rounded-[6px] bg-neutral-200/70" style={{ width: size, height: size }} aria-hidden />;
+  }
+  const url = variants[idx];
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt={alt} style={{ width: size, height: size }} className="object-contain rounded-[6px] bg-white" onError={() => setIdx(i => i + 1)} />
+  );
+}
+
+// --- IconSelect component (interactive dropdown with icons) ---
+type IconOption = { value: string; label: string; order?: number };
+function useClickOutside<T extends HTMLElement>(onOutside: () => void) {
+  const ref = React.useRef<T | null>(null);
+  React.useEffect(() => {
+    function onDoc(e: MouseEvent) { if (!ref.current) return; if (!ref.current.contains(e.target as Node)) onOutside(); }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [onOutside]);
+  return ref;
+}
+function IconSelect({
+  value, onChange, options, groups, getIcon, placeholder = '-', disabled, iconSize = 20, itemIconSize = 20,
+}:{
+  value?: string; onChange:(v:string)=>void; options?: IconOption[]; groups?: Map<string, IconOption[]>; getIcon:(o:IconOption)=>string|undefined;
+  placeholder?: string; disabled?: boolean; iconSize?: number; itemIconSize?: number;
+}) {
+  const [mounted, setMounted] = React.useState(false);
+  const [animIn, setAnimIn] = React.useState(false);
+  const ref = useClickOutside<HTMLDivElement>(() => closeMenu());
+  const flat: IconOption[] = React.useMemo(() => (groups ? Array.from(groups.values()).flat() : (options ?? [])), [groups, options]);
+  const current = flat.find(o => o.value === value);
+  const canOpen = !disabled && flat.length > 1;
+  function openMenu() { if (mounted) return; setMounted(true); requestAnimationFrame(() => setAnimIn(true)); }
+  function closeMenu() { if (!mounted) return; setAnimIn(false); }
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') closeMenu(); }
+    if (mounted) document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mounted]);
+  const selectItem = (val: string) => { onChange(val); closeMenu(); };
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" disabled={disabled} onClick={() => { if (!canOpen) return; mounted ? closeMenu() : openMenu(); }}
+        className={[ "w-full rounded border bg-white px-3 py-2 flex items-center justify-between gap-2", canOpen ? "cursor-pointer" : "cursor-default" ].join(" ")}>
+        <span className="flex items-center gap-2 min-w-0">
+          <TinyIcon src={current ? getIcon(current) : undefined} alt={current?.label ?? ''} size={iconSize} />
+          <span className="truncate">{current?.label ?? placeholder}</span>
+        </span>
+        {canOpen && (
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.24 4.25a.75.75 0 01-1.08 0L5.25 8.27a.75.75 0 01-.02-1.06z"/>
+          </svg>
+        )}
+      </button>
+
+      {mounted && (
+        <div className={[ "absolute z-20 mt-1 w-full rounded-xl border bg-white shadow-[0_8px_24px_rgba(0,0,0,.12)]", "origin-top transition-all duration-150 ease-out", animIn ? "opacity-100 translate-y-0 scale-100" : "opacity-0 -translate-y-1 scale-[0.98]" ].join(' ')}
+             onTransitionEnd={() => { if (!animIn) setMounted(false); }} role="listbox">
+          <div className="max-h-72 overflow-auto py-1">
+            {groups ? (
+              Array.from(groups.entries()).map(([g, arr]) => (
+                <div key={g} className="py-1">
+                  <div className="sticky top-0 z-10 bg-white/95 backdrop-blur px-3 py-1 text-[11px] uppercase text-neutral-500">{g}</div>
+                  {arr.map(opt => {
+                    const selected = opt.value === value;
+                    return (
+                      <button key={opt.value} type="button" onMouseDown={() => selectItem(opt.value)}
+                        className={[ "w-full px-3 py-2.5 flex items-center gap-3 text-left hover:bg-neutral-50", selected ? "bg-neutral-50" : "" ].join(' ')}
+                        role="option" aria-selected={selected}>
+                        <TinyIcon src={getIcon(opt)} alt={opt.label} size={itemIconSize} />
+                        <span className="truncate">{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))
+            ) : (
+              (options ?? []).map(opt => {
+                const selected = opt.value === value;
+                return (
+                  <button key={opt.value} type="button" onMouseDown={() => selectItem(opt.value)}
+                    className={[ "w-full px-3 py-2.5 flex items-center gap-3 text-left hover:bg-neutral-50", selected ? "bg-neutral-50" : "" ].join(' ')}
+                    role="option" aria-selected={selected}>
+                    <TinyIcon src={getIcon(opt)} alt={opt.label} size={itemIconSize} />
+                    <span className="truncate">{opt.label}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Complemento selector (icon chips) ---
+function ComplementoSelector({
+  value, onChange, options,
+}: { value: string[]; onChange: (v: string[]) => void; options: {value:string;label:string}[] }) {
+  const selected = (value ?? []).map(v => v.toLowerCase()).filter(v => v && v !== 'nenhum');
+  const noneActive = selected.length === 0;
+  const orderedOptions = React.useMemo(() => {
+    const arr = [...options];
+    arr.sort((a,b) => { if (a.value.toLowerCase() === 'nenhum') return -1; if (b.value.toLowerCase() === 'nenhum') return 1; return 0; });
+    return arr;
+  }, [options]);
+  const setNone = () => onChange([]);
+  const toggle = (raw: string) => {
+    const c = raw.toLowerCase();
+    if (c === 'nenhum') { setNone(); return; }
+    const has = selected.includes(c);
+    if (has) onChange(selected.filter(v => v !== c)); else onChange([...selected, c]);
+  };
+
+  const baseCls = "group inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-all border shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD200]/60";
+  const activeCls = "bg-[#FFD200]/20 border-[#FFD200] text-[#122C4F] shadow-[0_0_0_2px_rgba(255,210,0,0.35)]";
+  const inactiveCls = "bg-white border-neutral-300 text-neutral-800 hover:bg-neutral-50 hover:border-neutral-400";
+
+
+  
+  return (
+    <div className="flex flex-wrap gap-2">
+      {orderedOptions.map(opt => {
+        const val = opt.value.toLowerCase();
+        const isNone = val === 'nenhum';
+        const active = isNone ? noneActive : selected.includes(val);
+        const iconSrc = !isNone ? complementoIconSrc(val) : '';
+        return (
+          <button key={opt.value} type="button" onClick={() => toggle(opt.value)} aria-pressed={active}
+            className={`${baseCls} ${active ? activeCls : inactiveCls}`}>
+            {!isNone && <TinyIcon src={iconSrc} alt="" size={18} />}
+            <span className="whitespace-nowrap">{opt.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// --- Thumbs preview (used by budgets for photos) ---
+function Thumbs({ urls } : { urls: string[] }) {
+  if (!urls?.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {urls.map(u => (
+        <a key={u} href={u} target="_blank" rel="noreferrer" className="block w-24 h-24 border rounded overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={u} alt="" className="w-full h-full object-cover" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/* ========== end previews block ========== */
+
 
 // normalize complements from API (string or array) to string[]
 const parseCompsInput = (raw: any): string[] => {
@@ -382,6 +635,35 @@ React.useEffect(() => {
     })();
   }, [details.model]);
 
+// TURBO ENFORCED RULES
+React.useEffect(() => {
+  if (!isTurboModelKey(details.model)) return;
+
+  setDetails(d => {
+    const next = { ...d };
+
+    // Ensure acrylic has default if empty or invalid
+    if (!next.acrylic || next.acrylic === 'nenhum') {
+      next.acrylic = "acrilico_agua_viva";
+    }
+
+    // Force fixed fields that Turbo ALWAYS controls
+    next.finish = "branco";
+    next.glassTypeKey = "";
+    next.complements = [];
+
+    // Clear dependent fields
+    next.barColor = "";
+    next.visionSupport = "";
+    next.towelColorMode = "";
+    next.shelfColorMode = "";
+    next.fixingBarMode = "";
+    next.shelfHeightPct = null;
+
+    return next;
+  });
+}, [details.model]);
+
   // derived options from catalog
   const models       = React.useMemo(() => catalog?.MODEL ?? [], [catalog]);
   const handles      = React.useMemo(() => (catalog?.HANDLE ?? []).filter(h => h.value !== '-' && h.value !== ''), [catalog]);
@@ -393,6 +675,37 @@ React.useEffect(() => {
     const rm = new Set(rule.removeFinishes.map((v) => v.toLowerCase()));
     return all.filter((f) => !rm.has((f.value ?? '').toLowerCase()));
   }, [finMetal, finLacado, rule]);
+
+  // --- Serigrafia color options (same as orçamento) ---
+  const finishesNoChromeAnod = React.useMemo(
+    () =>
+      (finishes ?? []).filter(f => {
+        const v = String(f.value || '').toLowerCase();
+        return v !== 'cromado' && v !== 'anodizado';
+      }),
+    [finishes]
+  );
+
+  const serigrafiaColorChoices = React.useMemo(
+    () => [
+      { value: 'padrao', label: 'Padrão' },
+      ...finishesNoChromeAnod.map(f => ({
+        value: f.value,
+        label: f.label,
+      })),
+    ],
+    [finishesNoChromeAnod]
+  );
+
+  // icon helper
+  function serigrafiaColorIcon(opt: { value: string; label: string }) {
+    if (opt.value === 'padrao') {
+      return glassIconSrcFromLabel('Fosco'); // same placeholder icon as orçamento
+    }
+    return finishIconSrc(opt.value) ?? '';
+  }
+
+
 
   const glassTipos   = React.useMemo(() => catalog?.GLASS_TIPO ?? [], [catalog]);
   const monos        = React.useMemo(() => catalog?.MONOCROMATICO ?? [], [catalog]);
@@ -413,7 +726,13 @@ React.useEffect(() => {
   const showFixBar   = !!rule?.hasFixingBar;
   const allowTowel1  = !!rule?.allowTowel1;
   const hideHandles  = !!rule?.hideHandles;
+  // depends on selected complements
+  const hasVision   = details.complements.includes("vision");
+  const hasTowel1   = details.complements.includes("toalheiro1");
+  const hasShelf    = details.complements.includes("prateleira");
 
+  // Admin always allows shelf the same way public orçamento does
+  const allowShelf  = true;
 const simModelParam = React.useMemo(
   () => simModelParamFromKey(details.model),
   [details.model]
@@ -628,6 +947,14 @@ const simulatorUrl = React.useMemo(() => {
     );
   }
 
+  const filteredComplements = React.useMemo(() => {
+    return (complements ?? []).filter(c => {
+      const v = c.value.toLowerCase();
+      if (v === 'toalheiro1' && !allowTowel1) return false;
+      return true;
+    }).map(c => ({ value: c.value, label: c.label }));
+  }, [complements, allowTowel1]);
+
   return (
     <div
       onMouseDown={(e) => { if (e.currentTarget === e.target) onClose(); }}
@@ -691,179 +1018,229 @@ const simulatorUrl = React.useMemo(() => {
 
             {/* Col 2 — Produto */}
             <section className="space-y-3">
-              <h4 className="text-base font-medium">Detalhes do produto</h4>
+              <h4 className="text-base font-semibold text-neutral-900">
+                Detalhes do produto
+              </h4>
 
-              {/* Modelo */}
-              <Select
-                label="Modelo *"
-                value={details.model}
-                onChange={(v) => setDetails({ ...details, model: v })}
-                options={ensureSelected(models, details.model)}
-              />
-
-              {/* Puxador */}
-              {!hideHandles && (
-                <Select
-                  label="Puxador"
-                  value={details.handleKey}
-                  onChange={(v) => setDetails({ ...details, handleKey: v })}
-                  options={ensureSelected(
-                    (isPainelV234(details.model) ? handles : handles.filter(h => h.value !== 'sem')),
-                    details.handleKey
-                  )}
-                />
-              )}
-
-              {/* Acabamento */}
-              <Select
-                label="Acabamento *"
-                value={details.finish}
-                onChange={(v) => setDetails({ ...details, finish: v })}
-                options={ensureSelected(finishes, details.finish)}
-              />
-
-              {/* Fixing bar (rule) */}
-              {showFixBar && (
-                <Select
-                  label="Barra de fixação *"
-                  value={details.fixingBarMode}
-                  onChange={(v) => setDetails({ ...details, fixingBarMode: v })}
-                  options={[
-                    { value: 'padrao', label: 'Padrão' },
-                    { value: 'acabamento', label: 'Cor do acabamento' },
-                  ]}
-                />
-              )}
-
-              {/* Vidro / Monocromático */}
-              <Select
-                label="Vidro / Monocromático *"
-                value={details.glassTypeKey}
-                onChange={(v) => setDetails({ ...details, glassTypeKey: v })}
-                options={ensureSelected([...(glassTipos ?? []), ...(monos ?? [])], details.glassTypeKey)}
-              />
-
-              {/* Acrílico (rule) */}
-              {showAcrylic && (
-                <Select
-                  label="Acrílico / Policarbonato"
-                  value={details.acrylic}
-                  onChange={(v) => setDetails({ ...details, acrylic: v })}
-                  options={ensureSelected(acrylics, details.acrylic)}
-                />
-              )}
-
-              {/* Complemento */}
-              <div className="space-y-2">
-                <label className="text-sm text-foreground">Complementos *</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {complements.filter(o => o.value !== 'nenhum').map((o) => {
-                    const checked = details.complements.includes(o.value);
-                    return (
-                      <label key={o.value} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleComplement(o.value)}
-                        />
-                        <span>{o.label}</span>
-                      </label>
-                    );
-                  })}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Modelo */}
+                <div>
+                  <label className="block text-sm mb-1">Modelo *</label>
+                  <IconSelect
+                    value={details.model}
+                    onChange={(v) => setDetails((d) => ({ ...d, model: v }))}
+                    options={(models ?? []).map(m => ({ value: m.value, label: m.label }))}
+                    getIcon={(opt) => modelIconSrc(opt.value)}
+                    iconSize={34}
+                    itemIconSize={48}
+                  />
                 </div>
-              </div>
 
-              {/* Vision-only */}
-              {details.complements.includes('vision') && (
-                <>
-                  <Select
-                    label="Cor da Barra Vision *"
-                    value={details.barColor}
-                    onChange={(v) => setDetails({ ...details, barColor: v })}
-                    options={ensureSelected(vbarColors, details.barColor)}
-                  />
-                  <Select
-                    label="Cor de Suporte *"
-                    value={details.visionSupport}
-                    onChange={(v) => setDetails({ ...details, visionSupport: v })}
-                    options={ensureSelected(finishes, details.visionSupport)}
-                  />
-                </>
-              )}
-
-              {/* Toalheiro 1 */}
-              {allowTowel1 && details.complements.includes('toalheiro1') && (
-                <Select
-                  label="Cor do toalheiro *"
-                  value={details.towelColorMode}
-                  onChange={(v) => setDetails({ ...details, towelColorMode: v })}
-                  options={[
-                    { value: 'padrao', label: 'Padrão (Cromado)' },
-                    { value: 'acabamento', label: 'Cor do Acabamento' },
-                  ]}
-                />
-              )}
-
-              {details.complements.includes('prateleira') && (
-                <>
-                  <Select
-                    label="Cor do suporte Prateleira *"
-                    value={details.shelfColorMode}
-                    onChange={(v) => setDetails({ ...details, shelfColorMode: v })}
-                    options={[
-                      { value: 'padrao', label: 'Padrão' },
-                      { value: 'acabamento', label: 'Cor do Acabamento' },
-                    ]}
-                  />
-
-                  {/* slider like budgets */}
-                  <div className="space-y-1">
-                    <label className="text-sm text-foreground">
-                      Altura da prateleira ({details.shelfHeightPct ?? 100}%)
-                    </label>
-                    <input
-                      type="range"
-                      min={20}
-                      max={100}
-                      step={1}
-                      value={details.shelfHeightPct ?? 100}
-                      onChange={(e) =>
-                        setDetails({
-                          ...details,
-                          shelfHeightPct: Number(e.target.value),
-                        })
-                      }
-                      className="w-full"
+                {/* Puxador */}
+                {!hideHandles && (
+                  <div>
+                    <label className="block text-sm mb-1">Puxador *</label>
+                    <IconSelect
+                      value={details.handleKey}
+                      onChange={(v) => setDetails((d) => ({ ...d, handleKey: v }))}
+                      options={(handles ?? []).map(h => ({ value: h.value, label: h.label }))}
+                      getIcon={(opt) => handleIconSrc(opt.value)}
+                      iconSize={34}
+                      itemIconSize={48}
                     />
                   </div>
-                </>
-              )}
+                )}
 
-              {/* Serigrafia + Cor */}
-              <Select
-                label="Serigrafia"
-                value={details.serigraphy}
-                onChange={(v) =>
-                  setDetails({
-                    ...details,
-                    serigraphy: v,
-                    serigrafiaColor: v === 'nenhum' ? '' : details.serigrafiaColor,
-                  })
-                }
-                options={ensureSelected(serigrafias, details.serigraphy)}
-              />
-              {details.serigraphy && details.serigraphy !== 'nenhum' && (
-                <Select
-                  label="Cor da Serigrafia *"
-                  value={details.serigrafiaColor}
-                  onChange={(v) => setDetails({ ...details, serigrafiaColor: v })}
-                  options={[
-                    { value: 'padrao', label: 'Padrão' },
-                    { value: 'acabamento', label: 'Cor do Acabamento' },
-                  ]}
-                />
-              )}
+                {/* Acabamento */}
+                <div>
+                  <label className="block text-sm mb-1">Acabamento *</label>
+                  <IconSelect
+                    value={details.finish}
+                    onChange={(v) => setDetails((d) => ({ ...d, finish: v }))}
+                    options={(finishes ?? []).map(f => ({ value: f.value, label: f.label }))}
+                    getIcon={(opt) => finishIconSrc(opt.value)}
+                    iconSize={34}
+                    itemIconSize={48}
+                    disabled={isTurboModelKey(details.model)}
+                  />
+                </div>
+
+                {/* Fixing bar (if rule) */}
+                {showFixBar && (
+                  <div>
+                    <label className="block text-sm mb-1">Barra de fixação *</label>
+                    <select
+                      className="block w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/50"
+                      value={details.fixingBarMode}
+                      onChange={(e) => setDetails(d => ({ ...d, fixingBarMode: e.target.value }))}
+                    >
+                      <option value="padrao">Padrão</option>
+                      <option value="acabamento">Cor do acabamento</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Vidro / Monocromático */}
+                {!isTurboModelKey(details.model) && (
+                  <div>
+                    <label className="block text-sm mb-1">Vidro / Monocromático *</label>
+                    <IconSelect
+                      value={details.glassTypeKey}
+                      onChange={(v) => setDetails(d => ({ ...d, glassTypeKey: v }))}
+                      options={[...(glassTipos ?? []), ...(monos ?? [])].map(o => ({ value: o.value, label: o.label }))}
+                      getIcon={(opt) => glassIconSrcFromLabel(opt.label)}
+                      iconSize={34}
+                      itemIconSize={48}
+                    />
+                  </div>
+                )}
+
+                {/* Acrílico / Policarbonato */}
+                {showAcrylic && (
+                      <div>
+                        <label className="block text-sm mb-1">Acrílico</label>
+                        <IconSelect
+                          value={details.acrylic}
+                          onChange={(v) => setDetails(d => ({ ...d, acrylic: v }))}
+                          options={(acrylics ?? []).map(a => ({ value: a.value, label: a.label }))}
+                          getIcon={(opt) => opt.value === 'nenhum' ? undefined : acrylicIconSrcFromLabel(opt.label)}
+                          iconSize={34}
+                          itemIconSize={48}
+                        />
+                      </div>
+                    )}
+
+                      {/* Serigrafia */}
+                      <div>
+                        <label className="block text-sm mb-1">Serigrafia *</label>
+                        <IconSelect
+                          value={details.serigraphy}
+                          onChange={(v) =>
+                            setDetails((d) => ({
+                              ...d,
+                              serigraphy: v,
+                              serigrafiaColor: '', // reset color when changing silk
+                            }))
+                          }
+                          options={serigrafias.map((s) => ({
+                            value: s.value,
+                            label: s.label,
+                          }))}
+                          getIcon={(opt) => silkIconFromOpt(opt)}
+                          iconSize={34}
+                          itemIconSize={48}
+                        />
+                      </div>
+
+                      {/* Serigrafia — Cor */}
+                      {details.serigraphy && details.serigraphy !== 'nenhum' && (
+                        <div>
+                          <label className="block text-sm mb-1">Cor da Serigrafia *</label>
+                          <IconSelect
+                            value={details.serigrafiaColor || 'padrao'}
+                            onChange={(v) => setDetails((d) => ({ ...d, serigrafiaColor: v }))}
+                            options={serigrafiaColorChoices}
+                            getIcon={(opt) => serigrafiaColorIcon(opt)}
+                            iconSize={34}
+                            itemIconSize={48}
+                          />
+                        </div>
+                      )}
+
+
+                {/* Complementos */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm mb-1">Complementos *</label>
+                  <ComplementoSelector
+                    value={details.complements}
+                    onChange={(v) => setDetails(d => ({ ...d, complements: v }))}  
+                    options={filteredComplements}
+                  />
+                </div>
+
+                {/* Vision-only */}
+                {hasVision && (
+                  <>
+                    <div>
+                      <label className="block text-sm mb-1">Cor da Barra Vision *</label>
+                      <IconSelect
+                        value={details.barColor}
+                        onChange={(v) => setDetails(d => ({ ...d, barColor: v }))}
+                        options={(vbarColors ?? []).map(o => ({ value: o.value, label: o.label }))}
+                        getIcon={(opt) => visionBarIconSrc(opt.value)}
+                        iconSize={34}
+                        itemIconSize={48}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Cor de Suporte *</label>
+                      <IconSelect
+                        value={details.visionSupport}
+                        onChange={(v) => setDetails(d => ({ ...d, visionSupport: v }))}
+                        options={
+                          (finishes ?? [])
+                            .filter(f => {
+                              const key = String(f.value ?? '').toLowerCase();
+                              const label = String(f.label ?? '').toLowerCase();
+                              return key !== 'anodizado' && label !== 'anodizado';
+                            })
+                            .map(o => ({ value: o.value, label: o.label }))
+                        }
+                        getIcon={(opt) => finishIconSrc(opt.value)}
+                        iconSize={34}
+                        itemIconSize={48}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Toalheiro 1 */}
+                {allowTowel1 && hasTowel1 && (
+                  <div>
+                    <label className="block text-sm mb-1">Cor do toalheiro *</label>
+                    <select
+                      className="block w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/50"
+                      value={details.towelColorMode}
+                      onChange={(e) => setDetails(d => ({ ...d, towelColorMode: e.target.value }))}
+                    >
+                      <option value="padrao">Padrão</option>
+                      <option value="acabamento">Cor do acabamento</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Prateleira de canto */}
+                {allowShelf && hasShelf && (
+                  <>
+                    <div>
+                      <label className="block text-sm mb-1">Cor da prateleira *</label>
+                      <select
+                        className="block w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/50"
+                        value={details.shelfColorMode}
+                        onChange={(e) => setDetails(d => ({ ...d, shelfColorMode: e.target.value }))}
+                      >
+                        <option value="padrao">Padrão</option>
+                        <option value="acabamento">Cor do acabamento</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">
+                        Altura da prateleira ({details.shelfHeightPct || 100}%)
+                      </label>
+                      <input
+                        type="range"
+                        min={60}
+                        max={120}
+                        value={details.shelfHeightPct ?? 100}
+                        onChange={(e) => setDetails(d => ({ ...d, shelfHeightPct: Number(e.target.value) }))}
+                        className="w-full"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             </section>
+
           </div>
 
           {/* Measures */}

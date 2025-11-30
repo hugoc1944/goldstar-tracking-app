@@ -172,6 +172,15 @@ function TinyIcon({ src, alt, size = 20 }: { src?: string; alt: string; size?: n
   );
 }
 
+function serigrafiaColorIcon(opt: { value: string; label: string }) {
+  if (opt.value === 'padrao') {
+    // use a generic “frosted glass” or similar – same idea as orçamento
+    return glassIconSrcFromLabel('Fosco');
+  }
+  return finishIconSrc(opt.value) ?? '';
+}
+
+
 // --- IconSelect component (interactive dropdown with icons) ---
 type IconOption = { value: string; label: string; order?: number };
 function useClickOutside<T extends HTMLElement>(onOutside: () => void) {
@@ -597,7 +606,24 @@ export function NewOrderClient() {
     const rm = new Set(rule.removeFinishes.map(v => v.toLowerCase()));
     return all.filter(f => !rm.has((f.value ?? '').toLowerCase()));
   }, [finMetal, finLacado, rule]);
+  const finishesNoChromeAnod = useMemo(
+      () => (finishes ?? []).filter(f => {
+        const v = (f.value ?? '').toLowerCase();
+        return v !== 'cromado' && v !== 'anodizado';
+      }),
+      [finishes]
+    );
 
+  const serigrafiaColorChoices = useMemo(
+    () => [
+      { value: 'padrao', label: 'Padrão' },
+      ...finishesNoChromeAnod.map(f => ({
+        value: f.value,
+        label: f.label,
+      })),
+    ],
+    [finishesNoChromeAnod]
+  );
 
   
   const glassTipos  = useMemo(() => catalog?.GLASS_TIPO ?? [], [catalog]);
@@ -724,6 +750,9 @@ export function NewOrderClient() {
     });
   }, [details.model]);
 
+
+
+  
   /* ---------- Pre-fill from ?fromClient= ---------- */
   const fromClient = searchParams.get('fromClient');
   useEffect(() => {
@@ -1175,14 +1204,14 @@ const [delivery, setDelivery] = useState({
               {details.serigraphy && details.serigraphy !== 'nenhum' && (
                 <div>
                   <label className="block text-sm mb-1">Cor da Serigrafia *</label>
-                  <select
-                    className="block w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/50"
-                    value={details.serigrafiaColor}
-                    onChange={(e) => setDetails({ ...details, serigrafiaColor: e.target.value })}
-                  >
-                    <option value="padrao">Padrão</option>
-                    <option value="acabamento">Cor do Acabamento</option>
-                  </select>
+                  <IconSelect
+                    value={details.serigrafiaColor || 'padrao'}
+                    onChange={(v) => setDetails({ ...details, serigrafiaColor: v })}
+                    options={serigrafiaColorChoices}
+                    getIcon={(opt) => serigrafiaColorIcon(opt)}
+                    iconSize={34}
+                    itemIconSize={48}
+                  />
                 </div>
               )}
             </>

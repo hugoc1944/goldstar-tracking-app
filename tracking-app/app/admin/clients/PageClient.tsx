@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AdminShell from '@/components/admin/AdminShell';
+import { Trash2 } from 'lucide-react';
 
 function GsSpinner({ size = 14, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
   const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
@@ -63,7 +64,7 @@ function ClientsPageInner() {
   const initialQ = sp.get('q') ?? '';
   const [q, setQ] = useState(initialQ);
   const debouncedQ = useDebounced(q, 350);
-
+  const [trashPendingId, setTrashPendingId] = useState<string | null>(null);
   const [data, setData] = useState<ClientsPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -98,6 +99,30 @@ function ClientsPageInner() {
       setData(cur ? mergePage(data, json) : json);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function sendClientToTrash(id: string) {
+    if (!confirm('Enviar este cliente para a lixeira?')) return;
+
+    setTrashPendingId(id);
+    try {
+      const res = await fetch(`/api/clients/${id}/trash`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(txt || 'Erro ao enviar cliente para a lixeira.');
+      }
+
+      // re-carregar primeira página com o filtro atual
+      await fetchPage(debouncedQ.trim(), null);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? 'Erro ao enviar cliente para a lixeira.');
+    } finally {
+      setTrashPendingId(null);
     }
   }
 
@@ -203,13 +228,31 @@ function ClientsPageInner() {
                   </Td>
                   <Td className="text-foreground">{c.ordersCount}</Td>
                   <Td className="pr-6 text-right">
-                    <Link
-                      href={`/admin/orders/new?fromClient=${c.id}`}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground hover:bg-muted/60"
-                      title="Criar novo pedido com dados do cliente"
-                    >
-                      +
-                    </Link>
+                    <div className="inline-flex items-center justify-end gap-2">
+                      {/* Send to trash */}
+                      <button
+                        type="button"
+                        onClick={() => sendClientToTrash(c.id)}
+                        disabled={trashPendingId === c.id}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-red-600 hover:bg-red-50 disabled:opacity-60"
+                        title="Enviar cliente para a lixeira"
+                      >
+                        {trashPendingId === c.id ? (
+                          <GsSpinner size={14} />
+                        ) : (
+                          <Trash2 size={14} />
+                        )}
+                      </button>
+
+                      {/* Create new order from client */}
+                      <Link
+                        href={`/admin/orders/new?fromClient=${c.id}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground hover:bg-muted/60"
+                        title="Criar novo pedido com dados do cliente"
+                      >
+                        +
+                      </Link>
+                    </div>
                   </Td>
                 </tr>
               ))

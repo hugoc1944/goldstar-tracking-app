@@ -40,7 +40,7 @@ export const BudgetCreateSchema = z.object({
   acrylicKey: z.string().optional(),
 
   serigrafiaKey: z.string().optional(),      // 'nenhum' or a code
-  serigrafiaColor: SerColorEnum.optional(),  // only if a silk is chosen
+  serigrafiaColor: z.string().optional(),
 
   fixingBarMode: FixBarModeEnum.optional(),  // only if model rule hasFixingBar
 
@@ -111,6 +111,23 @@ export const BudgetCreateSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório para Prateleira de Canto.', path: ['shelfColorMode'] });
     }
   }
+
+   if (val.serigrafiaKey && val.serigrafiaKey !== 'nenhum') {
+      const c = (val.serigrafiaColor ?? '').trim().toLowerCase();
+      if (!c) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Escolha a cor da serigrafia.',
+          path: ['serigrafiaColor'],
+        });
+      } else if (c === 'anodizado' || c === 'cromado') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Cor indisponível para serigrafia.',
+          path: ['serigrafiaColor'],
+        });
+      }
+    }
 });
 
 export type BudgetCreate = z.infer<typeof BudgetCreateSchema>;

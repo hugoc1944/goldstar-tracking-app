@@ -262,33 +262,72 @@ const normalizeComplements = (raw: any): string => {
   return NextResponse.json({ id: created.id, publicToken: created.publicToken });
 }
 
-// ---------- GET (unchanged) ----------
+// ---------- GET  ----------
+// ---------- GET  ----------
 export async function GET(req: Request) {
+
+  // ----------------------------------------------------
+  // (1) URL + searchParams parsing
+  // ----------------------------------------------------
   const url = new URL(req.url);
+
+  const scope = url.searchParams.get('scope') ?? 'active';  
+  // 'active' | 'trash' | 'all'
+
   const rawSearch = (url.searchParams.get('search') ?? '').trim();
+
   const status = url.searchParams.get('status') as
    'AGUARDA_VISITA' | 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE' | null;
+
   const model = url.searchParams.get('model') ?? '';
+
   const take = Math.min(parseInt(url.searchParams.get('take') ?? '20', 10) || 20, 50);
+
   const cursor = url.searchParams.get('cursor');
 
   let search = rawSearch;
   if (search.startsWith('#')) search = search.slice(1);
 
 
-  
+  // ----------------------------------------------------
+  // (2) Build base `where` object
+  // ----------------------------------------------------
   const where: any = {};
-  if (!('status' in where) || !where.status) {
-    where.status = { not: 'ENTREGUE' };
+
+
+  // ----------------------------------------------------
+  // (3) SOFT DELETE FILTER — must always run first
+  //     INSERT THIS EXACTLY BELOW where initialization
+  // ----------------------------------------------------
+  if (scope === 'active') {
+    where.deletedAt = null;
+  } else if (scope === 'trash') {
+    where.deletedAt = { not: null };
   }
+  // scope === 'all' → no deletedAt filter
+
+
+  // ----------------------------------------------------
+  // (4) STATUS FILTERING — clean version
+  //     INSERT BELOW soft-delete block
+  // ----------------------------------------------------
   if (status === 'AGUARDA_VISITA') {
     where.status = 'PREPARACAO';
     where.visitAwaiting = true;
   } else if (status) {
     where.status = status;
+  } else {
+    // default only when scope = active
+    if (scope === 'active') {
+      where.status = { not: 'ENTREGUE' };
+    }
   }
-  if (status) where.status = status;
 
+
+  // ----------------------------------------------------
+  // (5) TEXT SEARCH — unchanged
+  //     INSERT BELOW status logic
+  // ----------------------------------------------------
   if (search) {
     where.OR = [
       { customer: { name: { contains: search, mode: 'insensitive' } } },
@@ -298,10 +337,34 @@ export async function GET(req: Request) {
       { trackingNumber: { contains: search, mode: 'insensitive' } },
     ];
   }
+
+
+  // ----------------------------------------------------
+  // (6) MODEL FILTER — unchanged
+  // ----------------------------------------------------
   if (model) {
     where.items = { some: { model } };
   }
+  const createdFrom = url.searchParams.get("createdFrom");
+  const createdTo = url.searchParams.get("createdTo");
 
+  if (createdFrom || createdTo) {
+    where.createdAt = {};
+
+    if (createdFrom) {
+      where.createdAt.gte = new Date(createdFrom);
+    }
+
+    if (createdTo) {
+      const dt = new Date(createdTo);
+      dt.setHours(23, 59, 59, 999); // include end of day
+      where.createdAt.lte = dt;
+    }
+  }
+
+  // ----------------------------------------------------
+  // (7) QUERY
+  // ----------------------------------------------------
   const orders = await prisma.order.findMany({
     where,
     take: take + 1,
@@ -313,8 +376,10 @@ export async function GET(req: Request) {
     },
   });
 
+
   const hasMore = orders.length > take;
   const page = hasMore ? orders.slice(0, take) : orders;
+
 
   const rows = page.map(o => ({
     id: o.id,
@@ -326,6 +391,7 @@ export async function GET(req: Request) {
     model: o.items[0]?.model ?? null,
     createdAt: o.createdAt.toISOString(),
   }));
+
 
   return NextResponse.json({
     rows,

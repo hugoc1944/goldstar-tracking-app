@@ -18,6 +18,10 @@ model Customer {
   city      String?
   postal    String?
   orders    Order[]
+
+  updatedAt   DateTime @default(now()) @updatedAt
+  deletedAt   DateTime? 
+  @@index([deletedAt])
 }
 
 model Order {
@@ -50,6 +54,10 @@ model Order {
   visitAwaiting  Boolean  @default(false)
   visitAt        DateTime?
 
+  updatedAt    DateTime @default(now()) @updatedAt
+  deletedAt    DateTime? 
+
+  @@index([deletedAt])
   @@index([status])
   @@index([publicToken])
 }

@@ -60,7 +60,7 @@ export const AdminBudgetSchema = z.object({
   glassTypeKey: z.string().min(1),
   acrylicKey: z.string().optional(),
   serigrafiaKey: z.string().optional(),
-  serigrafiaColor: z.enum(['padrao','acabamento']).optional(),
+  serigrafiaColor: z.string().optional(),
 
   fixingBarMode: z.enum(['padrao','acabamento']).optional(),
 
@@ -113,6 +113,23 @@ export const AdminBudgetSchema = z.object({
   if (comps.includes('prateleira')) {
     if (!val.shelfColorMode) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Obrigatório para Prateleira.', path: ['shelfColorMode'] });
+    }
+  }
+  // Serigrafia → color required & cannot be Anodizado/Cromado
+  if (val.serigrafiaKey && val.serigrafiaKey !== 'nenhum') {
+    const c = (val.serigrafiaColor ?? '').trim().toLowerCase();
+    if (!c) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Escolha a cor da serigrafia.',
+        path: ['serigrafiaColor'],
+      });
+    } else if (c === 'anodizado' || c === 'cromado') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Cor indisponível para serigrafia.',
+        path: ['serigrafiaColor'],
+      });
     }
   }
 });
@@ -277,6 +294,30 @@ async function removeInvoice() {
   }, []);
 
   const modelKey = form.watch('modelKey');
+  // --- TURBO enforced defaults ---
+  React.useEffect(() => {
+    if (!isTurboModelKey(modelKey)) return;
+
+    // Auto-default Acrylic ONLY IF empty
+    if (!form.getValues('acrylicKey') || form.getValues('acrylicKey') === 'nenhum') {
+      form.setValue('acrylicKey', 'acrilico_agua_viva', { shouldDirty: true });
+    }
+
+    // Always-clear disallowed Turbo fields
+    form.setValue('glassTypeKey', 'nenhum', { shouldDirty: true });
+    form.setValue('fixingBarMode', undefined, { shouldDirty: true });
+
+    // Complements
+    form.setValue('complementos', [], { shouldDirty: true });
+
+    // Additional dependent clears
+    form.setValue('barColor', undefined, { shouldDirty: true });
+    form.setValue('visionSupport', undefined, { shouldDirty: true });
+    form.setValue('towelColorMode', undefined, { shouldDirty: true });
+    form.setValue('shelfColorMode', undefined, { shouldDirty: true });
+    form.setValue('shelfHeightPct', undefined, { shouldDirty: true });
+  }, [modelKey]);
+
   React.useEffect(() => {
     if (!modelKey) return;
     (async () => {
@@ -285,6 +326,7 @@ async function removeInvoice() {
       else setRule(null);
     })();
   }, [modelKey]);
+  
 
   // Conditional clears (Vision / Towel / Shelf)
   const comps = form.watch('complementos') ?? [];
@@ -342,9 +384,54 @@ async function removeInvoice() {
     return all.filter(f => !rm.has(f.value.toLowerCase()));
   }, [catalog, rule]);
 
+
+// after finishes const
+const finishesNoChromeAnod = React.useMemo(
+  () =>
+    finishes.filter(f => {
+      const v = f.value.toLowerCase();
+      return v !== 'cromado' && v !== 'anodizado';
+    }),
+  [finishes]
+);
+
+// Serigrafia color choices: "padrao" + all non-metal finishes
+const serigrafiaColorChoices = React.useMemo(
+  () => [
+    { value: 'padrao', label: 'Padrão' },
+    ...finishesNoChromeAnod.map(f => ({ value: f.value, label: f.label })),
+  ],
+  [finishesNoChromeAnod]
+);
+
+// Optional icon helper; mirror public behaviour
+function getSerigrafiaColorIcon(opt: { value: string; label: string }) {
+  if (opt.value === 'padrao') {
+    // same icon idea as public: Fosco.png
+    return `${PRE}/glass/vidros/Fosco.png`;
+  }
+  return finishIconSrc(opt.value) ?? '';
+}
+
   function isPainelV234(key?: string) {
     if (!key) return false;
     return /painel[_-]?v(2|3|4)\b/i.test(key.toLowerCase());
+  }
+  // Canonical normalization (copied from Orders Modal)
+  function canon(input: string) {
+    return input
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\s-]+/g, '_')
+      .replace(/_+/g, '_')
+      .trim();
+  }
+
+  const TURBO_MODEL_KEY = 'turbo_v1';
+  function isTurboModelKey(key?: string | null) {
+    if (!key) return false;
+    return canon(key) === TURBO_MODEL_KEY;
   }
 
   const handles = React.useMemo(() => {
@@ -366,26 +453,46 @@ async function removeInvoice() {
   }, [catalog, allowTowel1]);
   /* ---------------- Actions ---------------- */
 
-  const saveAll: SubmitHandler<FormValues> = async (values) => {
-    // merge price/notes into a single PATCH (API supports these)
-    const payload = normalizeForPatch({
-      ...values,
-      priceCents: toCents(priceEuro),
-      installPriceCents: toCents(installEuro),
-      notes: values.notes ?? undefined,
-    });
-    const res = await fetch(`/api/budgets/${budget.id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert(err?.error ?? 'Falha ao guardar');
-      return;
-    }
-    alert('Guardado.');
-  };
+// acrylic clears glass
+React.useEffect(() => {
+  const acrylic = form.watch('acrylicKey');
+  if (acrylic && acrylic !== 'nenhum') {
+    form.setValue('glassTypeKey', 'nenhum', { shouldDirty: true });
+  }
+}, [form.watch('acrylicKey')]);
+// glass clears acrylic (except Turbo which auto-locks acrylic)
+React.useEffect(() => {
+  const glass = form.watch('glassTypeKey');
+  if (!isTurboModelKey(modelKey) && glass && glass !== 'nenhum') {
+    form.setValue('acrylicKey', 'nenhum', { shouldDirty: true });
+  }
+}, [form.watch('glassTypeKey'), modelKey]);
+
+const saveAll: SubmitHandler<FormValues> = async (values) => {
+  const toMm = (cm?: number) => (cm == null ? undefined : Math.round(cm * 10));
+
+  const payload = normalizeForPatch({
+    ...values,
+    priceCents: toCents(priceEuro),
+    installPriceCents: toCents(installEuro),
+    notes: values.notes ?? undefined,
+    widthMm:  toMm(values.widthMm),
+    heightMm: toMm(values.heightMm),
+    depthMm:  toMm(values.depthMm),
+  });
+
+  const res = await fetch(`/api/budgets/${budget.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert(err?.error ?? 'Falha ao guardar');
+    return;
+  }
+  alert('Guardado.');
+};
 
   const convertAndSend = async () => {
     // push prices first to ensure PDF has correct totals
@@ -511,45 +618,142 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
 
         {/* Right: Modelo & Customização (mirrors public form) */}
         <section className="space-y-3">
-          <h2 className="text-lg font-medium">Modelo & Opções</h2>
+        <h2 className="text-lg font-medium">Modelo & Opções</h2>
 
-          {/* Model */}
-          <Select f={form} name="modelKey" label="Modelo *" options={(catalog?.MODEL ?? [])} />
-
-          {!hideHandles && (
-            <Select f={form} name="handleKey" label="Puxador" options={handles} />
-          )}
-
-          <Select f={form} name="finishKey" label="Acabamento *" options={finishes} />
-
-          {rule?.hasFixingBar && (
-            <Select
-              f={form}
-              name="fixingBarMode"
-              label="Barra de fixação *"
-              options={[
-                { value: 'padrao',     label: 'Padrão' },
-                { value: 'acabamento', label: 'Cor do acabamento' },
-              ]}
-            />
-          )}
-
-          <Select
-            f={form}
-            name="glassTypeKey"
-            label="Vidro / Monocromático *"
-            options={[...(glassTipos ?? []), ...(monos ?? [])]}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Modelo */}
+        <FieldWrap label="Modelo *">
+          <Controller
+            name="modelKey"
+            control={form.control}
+            render={({ field }) => (
+              <IconSelect
+                value={field.value}
+                onChange={field.onChange}
+                options={(catalog?.MODEL ?? []) as IconOption[]}
+                getIcon={(opt) => modelIconSrc(opt.value)}
+                placeholder="Escolher modelo"
+                iconSize={32}
+                itemIconSize={44}
+              />
+            )}
           />
+        </FieldWrap>
 
-          {allowAcrylic && (
-            <Select
-              f={form}
-              name="acrylicKey"
-              label="Acrílico / Policarbonato"
-              options={catalog?.ACRYLIC_AND_POLICARBONATE ?? []}
+        {/* Puxador */}
+        {!hideHandles && (
+          <FieldWrap label="Puxador">
+            <Controller
+              name="handleKey"
+              control={form.control}
+              render={({ field }) => (
+                <IconSelect
+                  value={field.value}
+                  onChange={field.onChange}
+                  options={handles as IconOption[]}
+                  getIcon={(opt) => handleIconSrc(opt.value)}
+                  placeholder="Escolher puxador"
+                  iconSize={32}
+                  itemIconSize={44}
+                />
+              )}
             />
-          )}
+          </FieldWrap>
+        )}
 
+        {/* Acabamento */}
+        <FieldWrap label="Acabamento *">
+          <Controller
+            name="finishKey"
+            control={form.control}
+            render={({ field }) => (
+              <IconSelect
+                value={field.value}
+                onChange={field.onChange}
+                options={finishes as IconOption[]}
+                getIcon={(opt) => finishIconSrc(opt.value) ?? ''}
+                placeholder="Escolher acabamento"
+                iconSize={32}
+                itemIconSize={44}
+              />
+            )}
+          />
+        </FieldWrap>
+
+        {/* Barra de fixação, se aplicável */}
+        {rule?.hasFixingBar && (
+          <FieldWrap label="Barra de fixação *">
+            <select
+              {...form.register('fixingBarMode')}
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FFD200]"
+            >
+              <option value="padrao">Padrão</option>
+              <option value="acabamento">Cor do acabamento</option>
+            </select>
+          </FieldWrap>
+        )}
+
+        {/* Vidro / Monocromático */}
+        {!isTurboModelKey(modelKey) && (
+          <FieldWrap label="Vidro / Monocromático *">
+            <Controller
+              name="glassTypeKey"
+              control={form.control}
+              render={({ field }) => (
+                <IconSelect
+                  value={field.value}
+                  onChange={field.onChange}
+                  options={[
+                    ...(glassTipos ?? []),
+                    ...(monos ?? []),
+                  ] as IconOption[]}
+                  getIcon={(opt) => glassIconSrcFromLabel(opt.label)}
+                  placeholder="Escolher vidro / monocromático"
+                  iconSize={32}
+                  itemIconSize={44}
+                />
+              )}
+            />
+          </FieldWrap>
+        )}
+
+        {/* Acrílico / Policarbonato – dropdown SEM restrição para Turbo */}
+        {/* Acrílico / Policarbonato – dropdown WITH Turbo restriction */}
+        {allowAcrylic && (
+          <FieldWrap label="Acrílico / Policarbonato">
+            <Controller
+              name="acrylicKey"
+              control={form.control}
+              render={({ field }) => (
+                <IconSelect
+                  value={field.value}
+                  onChange={field.onChange}
+                  options={
+                    isTurboModelKey(modelKey)
+                      ? [
+                          {
+                            value: 'acrilico_agua_viva',
+                            label: 'Acrílico Água Viva',
+                          },
+                        ]
+                      : (catalog?.ACRYLIC_AND_POLICARBONATE ?? []) as IconOption[]
+                  }
+                  getIcon={(opt) =>
+                    opt.value === 'nenhum'
+                      ? undefined
+                      : acrylicIconSrcFromLabel(opt.label)
+                  }
+                  placeholder="Sem acrílico"
+                  iconSize={32}
+                  itemIconSize={44}
+                />
+              )}
+            />
+          </FieldWrap>
+        )}
+
+        {/* Complementos / Vision / Toalheiro / Prateleira */}
+        <div className="md:col-span-2">
           <FieldWrap label="Complementos">
             <Controller
               name="complementos"
@@ -558,129 +762,149 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
                 <ComplementoSelector
                   value={field.value ?? []}
                   onChange={field.onChange}
-                  options={complementoFiltered}
+                  options={(complementoFiltered ?? []).map((c) => ({
+                    value: c.value,
+                    label: c.label,
+                  }))}
                 />
               )}
             />
           </FieldWrap>
-          {hasVision &&  (
-            <>
-              <Select f={form} name="barColor" label="Cor da Barra Vision *" options={catalog?.VISION_BAR_COLOR ?? []} />
-              <Select f={form} name="visionSupport" label="Cor de Suporte *" options={finishes} />
-            </>
-          )}
+        </div>
 
-          {hasTowel1 && (
-            <Select
-              f={form}
-              name="towelColorMode"
-              label="Cor do toalheiro *"
-              options={[
-                { value: 'padrao',     label: 'Padrão (Cromado)' },
-                { value: 'acabamento', label: 'Cor do Acabamento' },
-              ]}
-            />
-          )}
+        {hasVision && (
+          <>
+            <FieldWrap label="Cor da Barra Vision *">
+              <Controller
+                name="barColor"
+                control={form.control}
+                render={({ field }) => (
+                  <IconSelect
+                    value={field.value}
+                    onChange={field.onChange}
+                    options={(catalog?.VISION_BAR_COLOR ?? []) as IconOption[]}
+                    getIcon={(opt) => visionBarIconSrc(opt.value)}
+                    placeholder="Escolher cor da barra"
+                    iconSize={32}
+                    itemIconSize={44}
+                  />
+                )}
+              />
+            </FieldWrap>
+            <FieldWrap label="Cor de Suporte *">
+              <Controller
+                name="visionSupport"
+                control={form.control}
+                render={({ field }) => (
+                  <IconSelect
+                    value={field.value}
+                    onChange={field.onChange}
+                    options={
+                      (finishes ?? []).map((f) => ({
+                        value: f.value,
+                        label: f.label,
+                      })) as IconOption[]
+                    }
+                    getIcon={(opt) => finishIconSrc(opt.value) ?? ''}
+                    placeholder="Escolher cor do suporte"
+                    iconSize={32}
+                    itemIconSize={44}
+                  />
+                )}
+              />
+            </FieldWrap>
+          </>
+        )}
 
-          {hasShelf && (
-            <>
-              <FieldWrap label="Cor da prateleira">
-                {/* existing shelfColorMode select */}
-                <select
-                  {...form.register('shelfColorMode')}
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
-                >
-                  <option value="padrao">Padrão</option>
-                  <option value="acabamento">Por acabamento</option>
-                </select>
-              </FieldWrap>
+        {hasTowel1 && (
+          <FieldWrap label="Cor do toalheiro *">
+            <select
+              {...form.register('towelColorMode')}
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FFD200]"
+            >
+              <option value="padrao">Padrão (Cromado)</option>
+              <option value="acabamento">Cor do acabamento</option>
+            </select>
+          </FieldWrap>
+        )}
 
-              <FieldWrap label={`Altura da prateleira (${shelfHeightPct}% )`}>
-                <input
-                  type="range"
-                  min={20}
-                  max={100}
-                  step={1}
-                  value={shelfHeightPct}
-                  onChange={(e) =>
-                    form.setValue('shelfHeightPct', Number(e.target.value), {
-                      shouldDirty: true,
-                    })
-                  }
-                  className="w-full h-2 appearance-none rounded-full
-                            bg-slate-200
-                            accent-[#FECB1F]
-                            [--thumb-size:18px]
-                            [&::-webkit-slider-thumb]:appearance-none
-                            [&::-webkit-slider-thumb]:w-[var(--thumb-size)]
-                            [&::-webkit-slider-thumb]:h-[var(--thumb-size)]
-                            [&::-webkit-slider-thumb]:rounded-full
-                            [&::-webkit-slider-thumb]:bg-white
-                            [&::-webkit-slider-thumb]:border
-                            [&::-webkit-slider-thumb]:border-slate-300
-                            [&::-webkit-slider-thumb]:shadow
-                            [&::-moz-range-thumb]:w-[var(--thumb-size)]
-                            [&::-moz-range-thumb]:h-[var(--thumb-size)]
-                            [&::-moz-range-thumb]:rounded-full
-                            [&::-moz-range-thumb]:bg-white
-                            [&::-moz-range-thumb]:border
-                            [&::-moz-range-thumb]:border-slate-300
-                            [&::-moz-range-thumb]:shadow"
-                />
-                <div className="mt-1 flex justify-between text-[11px] text-slate-500">
-                  <span>20%</span>
-                  <span>100%</span>
-                </div>
-              </FieldWrap>
-            </>
-          )}
-          {hasShelf && (
-            <div className="mt-3 flex items-center justify-between text-sm">
-              <span>
-                Altura da prateleira:{" "}
-                <strong>{shelfHeightPct}%</strong>
-              </span>
-              <a
-                href={(() => {
-                  const params = new URLSearchParams();
-                  const model = String(budget.modelKey || '').toLowerCase();
-                  if (model) params.set('model', model);
-
-                  const clean = comps.filter(c => c !== 'nenhum');
-                  if (clean.length) params.set('complemento', clean.join(','));
-
-                  const shelfMode = form.getValues('shelfColorMode') || 'padrao';
-                  params.set('shelfColorMode', shelfMode);
-
-                  if (typeof shelfHeightPct === 'number') {
-                    params.set('altura', String(shelfHeightPct));
-                  }
-
-                  // (Optional: you can also add finish/glass/handle/etc from `budget` here)
-
-                  return `https://simulador.mfn.pt/?${params.toString()}`;
-                })()}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center rounded border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-50"
+        {hasShelf && (
+          <>
+            <FieldWrap label="Cor da prateleira *">
+              <select
+                {...form.register('shelfColorMode')}
+                className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FFD200]"
               >
-                Ver altura
-              </a>
+                <option value="padrao">Padrão</option>
+                <option value="acabamento">Por acabamento</option>
+              </select>
+            </FieldWrap>
+
+            <FieldWrap label={`Altura da prateleira (${shelfHeightPct}% )`}>
+              <input
+                type="range"
+                min={20}
+                max={100}
+                step={1}
+                value={shelfHeightPct}
+                onChange={(e) =>
+                  form.setValue('shelfHeightPct', Number(e.target.value), {
+                    shouldDirty: true,
+                  })
+                }
+                className="w-full"
+              />
+              <div className="mt-1 flex justify-between text-[11px] text-slate-500">
+                <span>20%</span>
+                <span>100%</span>
+              </div>
+              </FieldWrap>
+                </>
+              )}
+
+              {/* Serigrafia */}
+              <FieldWrap label="Serigrafia">
+                <Controller
+                  name="serigrafiaKey"
+                  control={form.control}
+                  render={({ field }) => (
+                    <IconSelect
+                      value={field.value}
+                      onChange={field.onChange}
+                      options={serigrafias as IconOption[]}
+                      getIcon={(opt) => silkIconFromOpt({ value: opt.value, label: opt.label })}
+                      placeholder="Sem serigrafia"
+                      iconSize={32}
+                      itemIconSize={44}
+                    />
+                  )}
+                />
+              </FieldWrap>
+
+              {selSer && selSer !== 'nenhum' && (
+                <FieldWrap
+                  label="Cor da Serigrafia *"
+                  error={form.formState.errors?.['serigrafiaColor']?.message as string | undefined}
+                >
+                  <Controller
+                    name="serigrafiaColor"
+                    control={form.control}
+                    render={({ field }) => (
+                      <IconSelect
+                        value={(field.value ?? '') as string}
+                        onChange={(v) => field.onChange(v || undefined)}
+                        options={serigrafiaColorChoices as IconOption[]}
+                        getIcon={getSerigrafiaColorIcon as any}
+                        iconSize={32}
+                        itemIconSize={44}
+                        placeholder="-"
+                      />
+                    )}
+                  />
+                </FieldWrap>
+              )}
             </div>
-          )}
-          <Select f={form} name="serigrafiaKey" label="Serigrafia" options={serigrafias} />
-          {selSer && selSer !== 'nenhum' && (
-            <Select
-              f={form}
-              name="serigrafiaColor"
-              label="Cor da Serigrafia *"
-              options={[
-                { value: 'padrao',     label: 'Padrão' },
-                { value: 'acabamento', label: 'Cor do Acabamento' },
-              ]}
-            />
-          )}
-        </section>
+            </section>
       </div>
       {/* IMAGENS DO LUGAR */}
     <section className="space-y-3">
@@ -905,28 +1129,65 @@ function uniqByValue(items: {value:string; label:string; order?:number}[]) {
   });
   return out;
 }
-
-function FieldWrap({ label, error, children }: { label?: string; error?: string; children: React.ReactNode }) {
+function FieldWrap({
+  label,
+  error,
+  children,
+}: {
+  label?: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <label className="block">
-      {label && <span className="block text-sm mb-1">{label}</span>}
+    <label className="block space-y-1">
+      {label && <span className="block text-sm font-medium text-neutral-800">{label}</span>}
       {children}
-      {error ? <span className="block text-xs text-red-600 mt-1">{error}</span> : null}
+      {error ? (
+        <span className="block text-xs text-red-600">{error}</span>
+      ) : null}
     </label>
   );
 }
 
-function Text({ f, name, label, type = 'text' }:{ f:any; name:keyof FormValues & string; label?:string; type?:string }) {
-  const { register, formState:{ errors } } = f;
+function Text({
+  f,
+  name,
+  label,
+  type = 'text',
+}: {
+  f: any;
+  name: keyof FormValues & string;
+  label?: string;
+  type?: string;
+}) {
+  const {
+    register,
+    formState: { errors },
+  } = f;
   return (
     <FieldWrap label={label} error={errors?.[name]?.message as string | undefined}>
-      <input type={type} {...register(name)} className="w-full border rounded px-3 py-2" />
+      <input
+        type={type}
+        {...register(name)}
+        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FFD200]"
+      />
     </FieldWrap>
   );
 }
 
-function NumInput({ f, name, label }:{ f:any; name:keyof FormValues & string; label?:string }) {
-  const { register, formState:{ errors } } = f;
+function NumInput({
+  f,
+  name,
+  label,
+}: {
+  f: any;
+  name: keyof FormValues & string;
+  label?: string;
+}) {
+  const {
+    register,
+    formState: { errors },
+  } = f;
   return (
     <FieldWrap label={label} error={errors?.[name]?.message as string | undefined}>
       <input
@@ -934,22 +1195,41 @@ function NumInput({ f, name, label }:{ f:any; name:keyof FormValues & string; la
         inputMode="decimal"
         step="any"
         {...register(name, {
-          setValueAs: (v: any) => (v === '' ? undefined : Number(String(v).replace(',', '.'))),
+          setValueAs: (v: any) =>
+            v === '' ? undefined : Number(String(v).replace(',', '.')),
         })}
-        className="w-full border rounded px-3 py-2"
+        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FFD200]"
       />
     </FieldWrap>
   );
 }
 
-function Textarea({ f, name, label, rows=3 }:{ f:any; name:keyof FormValues & string; label?:string; rows?:number }) {
-  const { register, formState:{ errors } } = f;
+function Textarea({
+  f,
+  name,
+  label,
+  rows = 3,
+}: {
+  f: any;
+  name: keyof FormValues & string;
+  label?: string;
+  rows?: number;
+}) {
+  const {
+    register,
+    formState: { errors },
+  } = f;
   return (
     <FieldWrap label={label} error={errors?.[name]?.message as string | undefined}>
-      <textarea rows={rows} {...register(name)} className="w-full border rounded px-3 py-2" />
+      <textarea
+        rows={rows}
+        {...register(name)}
+        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FFD200]"
+      />
     </FieldWrap>
   );
 }
+
 
 function Select({
   f, name, label, options, allowEmpty,
@@ -980,20 +1260,408 @@ function Select({
   );
 }
 
-function Thumbs({ urls }:{ urls:string[] }) {
-  if (!urls?.length) return null;
+
+/* ========== PREVIEW ICON HELPERS + IconSelect (from EditOrderModal) ========== */
+
+const PRE = '/previews';
+
+// --- model stem/icon helpers (robust canonicalization) ---
+function capToken(tok: string) {
+  return tok.replace(
+    /^(\d*)([a-zA-Z])(.*)$/,
+    (_m, d, c, rest) => `${d}${c.toUpperCase()}${rest.toLowerCase()}`
+  );
+}
+
+const MODEL_CANON: Record<string, string> = {
+  sterling: 'Sterling',
+  diplomatagold: 'DiplomataGold',
+  diplomatapivotante: 'DiplomataPivotante',
+  europa: 'Europa',
+  strong: 'Strong',
+  painel: 'Painel',
+  painelfixo: 'PainelFixo',
+  algarve: 'Algarve',
+  meioalgarve: 'MeioAlgarve',
+  meialua: 'MeiaLua',
+  lasvegas: 'LasVegas',
+  florida: 'Florida',
+  splash: 'Splash',
+  turbo: 'Turbo',
+  fole: 'Fole',
+  foleap: 'FoleAP',
+};
+
+function modelStemFromAny(input: string) {
+  const s = input.replace(/-/g, '_').replace(/\s+/g, '_').trim();
+  const m = s.match(/^(.*?)(?:_)?v(\d+)$/i);
+  let base = (m ? m[1] : s).replace(/_/g, '');
+  const v = m ? m[2] : undefined;
+
+  const lower = base.toLowerCase();
+  const canonical =
+    MODEL_CANON[lower] ??
+    base
+      .split(/(?=[A-Z])/)
+      .join('')
+      .split(/(\d+|[a-zA-Z]+)/g)
+      .filter(Boolean)
+      .map(capToken)
+      .join('');
+
+  return v ? `${canonical}_V${v}` : canonical;
+}
+
+const modelIconSrc = (valueOrLabel: string) =>
+  `${PRE}/models/${modelStemFromAny(valueOrLabel)}.png`;
+
+// --- finish icons ---
+const FINISH_FILE_MAP: Record<string, string> = {
+  amarelo: 'Amarelo',
+  anodizado: 'Anodizado',
+  azulclaro: 'AzulClaro',
+  azulescuro: 'AzulEscuro',
+  azulturquesa: 'AzulTurquesa',
+  bordeaux: 'Bordeaux',
+  branco: 'Branco',
+  brancomate: 'BrancoMate',
+  castanho: 'Castanho',
+  cinza: 'Cinza',
+  cremelclaro: 'CremeClaro',
+  cremeescuro: 'CremeEscuro',
+  cromado: 'Cromado',
+  dourado: 'Dourado',
+  gunmetal: 'GunMetal',
+  preto: 'Preto',
+  pretomate: 'PretoMate',
+  pretofosco: 'PretoFosco',
+  rosa: 'Rosa',
+  verdeagua: 'VerdeAgua',
+  verdefloresta: 'VerdeFloresta',
+  vermelho: 'Vermelho',
+};
+
+const finishIconSrc = (name: string) => {
+  if (!name) return undefined;
+  const key = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[\s_-]/g, '');
+  const stem = FINISH_FILE_MAP[key];
+  if (!stem) return undefined;
+  return `${PRE}/finishes/${stem}.png`;
+};
+
+// --- handles ---
+function handleIconSrc(value?: string) {
+  if (!value || value === '') return `${PRE}/handles/default.png`;
+  if (/^h(\d)$/i.test(value)) {
+    return `${PRE}/handles/Handle_${value.replace(/^h/i, '')}.png`;
+  }
+  if (value.toLowerCase() === 'sem') return `${PRE}/handles/none.png`;
+  return `${PRE}/handles/default.png`;
+}
+
+// --- glass/acrylic/serigrafia helpers ---
+function labelToStem(label: string) {
+  return label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s_-]+/g, '');
+}
+
+const glassIconSrcFromLabel = (label: string) =>
+  `${PRE}/glass/vidros/${labelToStem(label)}.png`;
+
+const acrylicIconSrcFromLabel = (label: string) =>
+  `${PRE}/acrylics/${labelToStem(label)}.png`;
+
+function silkIdFrom(value?: string, label?: string) {
+  const s = (value || label || '').trim();
+  const mSer = s.match(/ser[\s_-]*0*(\d+)/i);
+  if (mSer) return `SER${mSer[1].padStart(3, '0')}`;
+  const mNamed = s.match(/(Quadro|Elo|Sereno)\s*0*(\d+)/i);
+  if (mNamed) {
+    const name =
+      mNamed[1][0].toUpperCase() + mNamed[1].slice(1).toLowerCase();
+    return `${name}${mNamed[2]}`;
+  }
+  // fallback: Pascalize
+  return s
+    .replace(/[\s_-]+/g, '')
+    .replace(/^\w/, (c) => c.toUpperCase());
+}
+
+const silkIconFromOpt = (opt: { value: string; label: string }) =>
+  `${PRE}/glass/silks/${silkIdFrom(opt.value, opt.label)}.png`;
+
+// --- complemento icons + Vision bar ---
+function complementoIconSrc(value: string) {
+  const v = value.toLowerCase();
+  if (v === 'vision') return `${PRE}/toalheiros/Vision.png`;
+  if (v === 'toalheiro1') return `${PRE}/toalheiros/Toalheiro1.png`;
+  if (v === 'prateleira') return `${PRE}/shelf/Prateleira.png`;
+  return '';
+}
+
+function visionBarIconSrc(value: string) {
+  const v = (value || '').toLowerCase();
+  if (v === 'glass' || v === 'vidro' || v === 'transparente') {
+    return `${PRE}/glass/vidros/Transparente.png`;
+  }
+  if (v === 'white' || v === 'branco' || v === 'branco_mate') {
+    return `${PRE}/finishes/BrancoMate.png`;
+  }
+  if (v === 'black' || v === 'preto' || v === 'preto_mate' || v === 'pretofosco') {
+    return `${PRE}/finishes/PretoMate.png`;
+  }
+  return `${PRE}/finishes/${value ? value.replace(/[\s_-]+/g, '') : ''}.png`;
+}
+
+// --- TinyIcon ---
+function TinyIcon({
+  src,
+  alt,
+  size = 20,
+}: {
+  src?: string;
+  alt: string;
+  size?: number;
+}) {
+  if (!src) {
+    return (
+      <span
+        className="inline-block rounded-[6px] bg-neutral-200/70"
+        style={{ width: size, height: size }}
+        aria-hidden
+      />
+    );
+  }
+  const exts = ['png', 'jpg', 'jpeg', 'webp'];
+  const base = src.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+  const variants = [
+    base,
+    base.replace(/_V(\d+)$/i, 'V$1'),
+    base.toLowerCase(),
+    base.replace(/_/g, ''),
+  ].flatMap((s) => exts.map((e) => `${s}.${e}`));
+
+  const [idx, setIdx] = React.useState(0);
+  if (idx >= variants.length) {
+    return (
+      <span
+        className="inline-block rounded-[6px] bg-neutral-200/70"
+        style={{ width: size, height: size }}
+        aria-hidden
+      />
+    );
+  }
+  const url = variants[idx];
   return (
-    <div className="flex flex-wrap gap-2">
-      {urls.map((u) => (
-        <a key={u} href={u} target="_blank" className="block w-24 h-24 border rounded overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={u} alt="" className="w-full h-full object-cover" />
-        </a>
-      ))}
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={alt}
+      style={{ width: size, height: size }}
+      className="object-contain rounded-[6px] bg-white"
+      onError={() => setIdx((i) => i + 1)}
+    />
+  );
+}
+
+// --- IconSelect (same behaviour, slightly nicer styling) ---
+type IconOption = { value: string; label: string; order?: number };
+
+function useClickOutside<T extends HTMLElement>(onOutside: () => void) {
+  const ref = React.useRef<T | null>(null);
+  React.useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) onOutside();
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [onOutside]);
+  return ref;
+}
+
+function IconSelect({
+  value,
+  onChange,
+  options,
+  groups,
+  getIcon,
+  placeholder = '-',
+  disabled,
+  iconSize = 24,
+  itemIconSize = 40,
+}: {
+  value?: string;
+  onChange: (v: string) => void;
+  options?: IconOption[];
+  groups?: Map<string, IconOption[]>;
+  getIcon: (o: IconOption) => string | undefined;
+  placeholder?: string;
+  disabled?: boolean;
+  iconSize?: number;
+  itemIconSize?: number;
+}) {
+  const [mounted, setMounted] = React.useState(false);
+  const [animIn, setAnimIn] = React.useState(false);
+  const ref = useClickOutside<HTMLDivElement>(() => closeMenu());
+
+  const flat: IconOption[] = React.useMemo(
+    () => (groups ? Array.from(groups.values()).flat() : options ?? []),
+    [groups, options]
+  );
+
+  const current = flat.find((o) => o.value === value);
+  const canOpen = !disabled && flat.length > 1;
+
+  function openMenu() {
+    if (mounted) return;
+    setMounted(true);
+    requestAnimationFrame(() => setAnimIn(true));
+  }
+  function closeMenu() {
+    if (!mounted) return;
+    setAnimIn(false);
+  }
+
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeMenu();
+    }
+    if (mounted) document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mounted]);
+
+  const selectItem = (val: string) => {
+    onChange(val);
+    closeMenu();
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          if (!canOpen) return;
+          mounted ? closeMenu() : openMenu();
+        }}
+        className={[
+          'w-full rounded-xl border border-neutral-300 bg-white px-3 py-2',
+          'flex items-center justify-between gap-2 shadow-sm',
+          canOpen ? 'cursor-pointer hover:border-neutral-400' : 'cursor-default',
+          disabled ? 'opacity-60' : '',
+        ].join(' ')}
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <TinyIcon
+            src={current ? getIcon(current) : undefined}
+            alt={current?.label ?? ''}
+            size={iconSize}
+          />
+          <span className="truncate text-sm">
+            {current?.label ?? <span className="text-neutral-400">{placeholder}</span>}
+          </span>
+        </span>
+        {canOpen && (
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden
+            className="text-neutral-500"
+          >
+            <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.24 4.25a.75.75 0 01-1.08 0L5.25 8.27a.75.75 0 01-.02-1.06z" />
+          </svg>
+        )}
+      </button>
+
+      {mounted && (
+        <div
+          className={[
+            'absolute z-20 mt-1 w-full rounded-xl border border-neutral-200 bg-white',
+            'shadow-[0_8px_24px_rgba(0,0,0,.12)]',
+            'origin-top transition-all duration-150 ease-out',
+            animIn
+              ? 'opacity-100 translate-y-0 scale-100'
+              : 'opacity-0 -translate-y-1 scale-[0.98]',
+          ].join(' ')}
+          onTransitionEnd={() => {
+            if (!animIn) setMounted(false);
+          }}
+          role="listbox"
+        >
+          <div className="max-h-72 overflow-auto py-1">
+            {groups
+              ? Array.from(groups.entries()).map(([g, arr]) => (
+                  <div key={g} className="py-1">
+                    <div className="sticky top-0 z-10 bg-white/95 px-3 py-1 text-[11px] uppercase text-neutral-500">
+                      {g}
+                    </div>
+                    {arr.map((opt) => {
+                      const selected = opt.value === value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onMouseDown={() => selectItem(opt.value)}
+                          className={[
+                            'w-full px-3 py-2.5 flex items-center gap-3 text-left text-sm',
+                            'hover:bg-neutral-50',
+                            selected ? 'bg-neutral-50' : '',
+                          ].join(' ')}
+                          role="option"
+                          aria-selected={selected}
+                        >
+                          <TinyIcon
+                            src={getIcon(opt)}
+                            alt={opt.label}
+                            size={itemIconSize}
+                          />
+                          <span className="truncate">{opt.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))
+              : (options ?? []).map((opt) => {
+                  const selected = opt.value === value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onMouseDown={() => selectItem(opt.value)}
+                      className={[
+                        'w-full px-3 py-2.5 flex items-center gap-3 text-left text-sm',
+                        'hover:bg-neutral-50',
+                        selected ? 'bg-neutral-50' : '',
+                      ].join(' ')}
+                      role="option"
+                      aria-selected={selected}
+                    >
+                      <TinyIcon
+                        src={getIcon(opt)}
+                        alt={opt.label}
+                        size={itemIconSize}
+                      />
+                      <span className="truncate">{opt.label}</span>
+                    </button>
+                  );
+                })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+// --- ComplementoSelector (icon chips, like in modal) ---
 function ComplementoSelector({
   value,
   onChange,
@@ -1001,56 +1669,97 @@ function ComplementoSelector({
 }: {
   value: string[];
   onChange: (v: string[]) => void;
-  options: CatItem[];
+  options: { value: string; label: string }[];
 }) {
-  const cleanValue = (value ?? []).filter(v => v !== 'nenhum');
+  const selected = (value ?? [])
+    .map((v) => v.toLowerCase())
+    .filter((v) => v && v !== 'nenhum');
+  const noneActive = selected.length === 0;
+
+  const orderedOptions = React.useMemo(() => {
+    const arr = [...options];
+    arr.sort((a, b) => {
+      const va = a.value.toLowerCase();
+      const vb = b.value.toLowerCase();
+      if (va === 'nenhum') return -1;
+      if (vb === 'nenhum') return 1;
+      return 0;
+    });
+    return arr;
+  }, [options]);
 
   const setNone = () => onChange([]);
 
-  const toggle = (c: string) => {
-    if (cleanValue.includes(c)) {
-      onChange(cleanValue.filter(v => v !== c));
+  const toggle = (raw: string) => {
+    const c = raw.toLowerCase();
+    if (c === 'nenhum') {
+      setNone();
+      return;
+    }
+    const has = selected.includes(c);
+    if (has) {
+      onChange(selected.filter((v) => v !== c));
     } else {
-      onChange([...cleanValue, c]);
+      onChange([...selected, c]);
     }
   };
 
-  const noneActive = cleanValue.length === 0;
+  const baseCls =
+    'group inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-all border shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD200]/60';
+  const activeCls =
+    'bg-[#FFD200]/20 border-[#FFD200] text-[#122C4F] shadow-[0_0_0_2px_rgba(255,210,0,0.35)]';
+  const inactiveCls =
+    'bg-white border-neutral-300 text-neutral-800 hover:bg-neutral-50 hover:border-neutral-400';
 
   return (
     <div className="flex flex-wrap gap-2">
-      <button
-        type="button"
-        onClick={setNone}
-        className={[
-          "px-3 py-1.5 rounded-full border text-sm transition",
-          noneActive
-            ? "bg-[#FFD200] border-[#FFD200] shadow-sm"
-            : "bg-white border-neutral-300 hover:bg-neutral-100"
-        ].join(" ")}
-      >
-        Nenhum
-      </button>
-
-      {options.map(opt => {
-        const active = cleanValue.includes(opt.value);
+      {orderedOptions.map((opt) => {
+        const val = opt.value.toLowerCase();
+        const isNone = val === 'nenhum';
+        const active = isNone ? noneActive : selected.includes(val);
+        const iconSrc = !isNone ? complementoIconSrc(val) : '';
         return (
           <button
-            type="button"
             key={opt.value}
+            type="button"
             onClick={() => toggle(opt.value)}
-            className={[
-              "px-3 py-1.5 rounded-full border text-sm transition",
-              active
-                ? "bg-[#FFD200] border-[#FFD200] shadow-sm"
-                : "bg-white border-neutral-300 hover:bg-neutral-100"
-            ].join(" ")}
+            aria-pressed={active}
+            className={`${baseCls} ${active ? activeCls : inactiveCls}`}
           >
-            {opt.label}
+            {!isNone && <TinyIcon src={iconSrc} alt="" size={18} />}
+            <span className="whitespace-nowrap">{opt.label}</span>
           </button>
         );
       })}
     </div>
   );
 }
+
+// --- Thumbs preview (reusable) ---
+function Thumbs({ urls }: { urls: string[] }) {
+  if (!urls?.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {urls.map((u) => (
+        <a
+          key={u}
+          href={u}
+          target="_blank"
+          rel="noreferrer"
+          className="block h-24 w-24 overflow-hidden rounded border border-neutral-200 bg-neutral-50"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={u}
+            alt=""
+            className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-105"
+          />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/* ========== end previews block ========== */
+
 

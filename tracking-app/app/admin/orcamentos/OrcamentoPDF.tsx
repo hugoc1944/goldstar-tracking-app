@@ -81,6 +81,38 @@ function humanCornerChoice(v?: string | null) {
   return titleCase(k);
 }
 
+function humanSerigrafiaKey(v?: string | null) {
+  if (!v || String(v).toLowerCase() === 'nenhum') return '-';
+
+  // Remove unwanted suffixes like "silkscreen"
+  const cleaned = String(v)
+    .replace(/silkscreen/i, '')
+    .replace(/silk\s*/i, '')
+    .trim();
+
+  return titleCase(cleaned);
+}
+
+function humanSerigrafiaColor(v?: string | null) {
+  if (!v) return '-';
+
+  let s = String(v).toLowerCase().trim();
+
+  // Legacy modes
+  if (s === 'padrao') return 'Padrão';
+  if (s === 'acabamento') return 'Cor do Acabamento';
+
+  // 1) Replace underscores with spaces (preto_mate -> preto mate)
+  s = s.replace(/_/g, ' ');
+
+  // 2) For any "...agua" at the end of a word, insert a space before "agua"
+  //    verdeagua -> verde Agua
+  s = s.replace(/(\w)(agua)\b/g, '$1 Agua');
+
+  // 3) Title case the final result
+  return titleCase(s);
+}
+
 const eur = (c?: number) =>
   (typeof c === 'number' ? (c / 100).toFixed(2) + ' €' : '-');
 
@@ -291,6 +323,19 @@ export function OrcamentoPDF({ b }: { b: any }) {
                 <Text style={styles.value}>{titleCase(String(b.glassTypeKey ?? '-'))}</Text>
               </View>
             )}
+             {/* Serigrafia (if any) */}
+              {b.serigrafiaKey && String(b.serigrafiaKey).toLowerCase() !== 'nenhum' && (
+                <>
+                  <View style={styles.row}>
+                    <Text style={styles.label}>Serigrafia</Text>
+                    <Text style={styles.value}>{humanSerigrafiaKey(b.serigrafiaKey)}</Text>
+                  </View>
+                  <View style={styles.row}>
+                    <Text style={styles.label}>Cor da Serigrafia</Text>
+                    <Text style={styles.value}>{humanSerigrafiaColor(b.serigrafiaColor)}</Text>
+                  </View>
+                </>
+              )}
             {/* ✅ Complementos list */}
             <View style={styles.row}><Text style={styles.label}>Complementos</Text><Text style={styles.value}>{humanComplementos(comps)}</Text></View>
 

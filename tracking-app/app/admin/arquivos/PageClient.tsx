@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import AdminShell from '@/components/admin/AdminShell';
 import { useRouter } from 'next/navigation';
+import { Trash2 } from 'lucide-react';
 
 function GsSpinner({ size = 14, stroke = 2, className = '' }: { size?: number; stroke?: number; className?: string }) {
   const s = { width: size, height: size, borderWidth: stroke } as React.CSSProperties;
@@ -49,6 +50,7 @@ export default function ArchivesPage() {
   const [navigatingId, setNavigatingId] = useState<string | null>(null);
 
   const debounced = useDebounced(search);
+  const [trashPendingId, setTrashPendingId] = useState<string | null>(null);
 
   async function load(first = false) {
     const usp = new URLSearchParams();
@@ -80,6 +82,33 @@ export default function ArchivesPage() {
     if (!cursor) return;
     setLoadingMore(true);
     try { await load(false); } finally { setLoadingMore(false); }
+  }
+
+  async function sendArchiveToTrash(orderId: string) {
+    if (!confirm('Enviar este pedido arquivado para a lixeira?')) return;
+
+    setTrashPendingId(orderId);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/trash`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(txt || 'Erro ao enviar pedido para a lixeira.');
+      }
+
+      // reload first page with current filters
+      setCursor(null);
+      setLoading(true);
+      await load(true);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? 'Erro ao enviar pedido para a lixeira.');
+    } finally {
+      setLoading(false);
+      setTrashPendingId(null);
+    }
   }
 
   return (
@@ -144,25 +173,43 @@ export default function ArchivesPage() {
                 </td>
                 <td className="py-3 text-foreground">{r.model ?? 'Diversos'}</td>
                 <td className="py-3 pr-6 text-right">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (navigatingId) return;
-                      setNavigatingId(r.id);
-                      router.push(`/admin/arquivos/${r.id}`);
-                    }}
-                    disabled={navigatingId === r.id}
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-primary hover:bg-primary/10 disabled:opacity-60"
-                  >
-                    {navigatingId === r.id ? (
-                      <>
-                        <GsSpinner />
-                        <span className="ml-1.5">A abrir…</span>
-                      </>
-                    ) : (
-                      'Ver'
-                    )}
-                  </button>
+                  <div className="inline-flex items-center justify-end gap-2">
+                    {/* Send archived order to trash */}
+                    <button
+                      type="button"
+                      onClick={() => sendArchiveToTrash(r.id)}
+                      disabled={trashPendingId === r.id}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-red-600 hover:bg-red-50 disabled:opacity-60"
+                      title="Enviar pedido para a lixeira"
+                    >
+                      {trashPendingId === r.id ? (
+                        <GsSpinner size={14} />
+                      ) : (
+                        <Trash2 size={14} />
+                      )}
+                    </button>
+
+                    {/* View archived order */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (navigatingId) return;
+                        setNavigatingId(r.id);
+                        router.push(`/admin/arquivos/${r.id}`);
+                      }}
+                      disabled={navigatingId === r.id}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-primary hover:bg-primary/10 disabled:opacity-60"
+                    >
+                      {navigatingId === r.id ? (
+                        <>
+                          <GsSpinner />
+                          <span className="ml-1.5">A abrir…</span>
+                        </>
+                      ) : (
+                        'Ver'
+                      )}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

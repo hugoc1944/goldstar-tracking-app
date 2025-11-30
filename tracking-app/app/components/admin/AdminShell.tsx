@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { Home, ClipboardList, Users, LogOut, FileText, Archive  } from 'lucide-react';
+import { Home, ClipboardList, Users, LogOut, FileText, Archive, Trash2 } from 'lucide-react';
 
 function NavItem({
   href, label, icon, active,
@@ -30,7 +30,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   return (
     <>
-      {/* Fixed sidebar (never scrolls away) */}
+      {/* Fixed sidebar */}
       <aside
         className="
           fixed inset-y-0 left-0 z-40 w-[260px]
@@ -81,6 +81,14 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             icon={<Archive size={18} />}
             active={pathname?.startsWith('/admin/arquivos')}
           />
+
+          {/* ✅ NEW Trash section */}
+          <NavItem
+            href="/admin/trash"
+            label="Apagados"
+            icon={<Trash2 size={18} />}
+            active={pathname?.startsWith('/admin/trash')}
+          />
         </nav>
 
         {/* User + logout */}
@@ -105,15 +113,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </div>
       </aside>
 
-      {/* Scrollable content area.
-         On large screens we add left padding equal to the sidebar width. */}
+      {/* Scrollable content area */}
       <section
         className="
           min-h-screen bg-background
           lg:pl-[260px]
         "
       >
-        {/* This wrapper gives the page its own vertical scroll separate from the fixed sidebar */}
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {children}
         </div>

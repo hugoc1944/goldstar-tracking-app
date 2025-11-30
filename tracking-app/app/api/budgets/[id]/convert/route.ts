@@ -70,28 +70,32 @@ async function sendBudgetAndEmail(
   const invoiceUrl = saved.invoicePdfUrl ?? null;
 
   // normalize existing filesJson, removing invoice duplicates
-  const existingFilesRaw = Array.isArray(saved.filesJson) ? saved.filesJson : [];
-  const existingFiles: FileItem[] = existingFilesRaw
-    .map((f: any) => {
-      if (!f || typeof f !== 'object' || typeof f.url !== 'string') return null;
+  // normalize existing filesJson, removing invoice duplicates AND old quotes
+const existingFilesRaw = Array.isArray(saved.filesJson) ? saved.filesJson : [];
+const existingFiles: FileItem[] = existingFilesRaw
+  .map((f: any) => {
+    if (!f || typeof f !== 'object' || typeof f.url !== 'string') return null;
 
-      // ❌ REMOVE any existing invoice file to avoid duplicates
-      if (invoiceUrl && f.url === invoiceUrl) return null;
+    const kind = f.kind ?? 'unknown';
+    const label = f.label ?? 'Anexo';
+    const url = f.url as string;
 
-      return {
-        kind: f.kind ?? 'unknown',
-        label: f.label ?? 'Anexo',
-        url: f.url,
-      };
-    })
-    .filter(Boolean) as FileItem[];
+    if (kind === 'quote' || label === 'Orçamento') return null;
 
+    if (invoiceUrl && url === invoiceUrl) return null;
+
+    return { kind, label, url };
+  })
+  .filter(Boolean) as FileItem[];
   // NEW QUOTE PDF
   const quoteFile: FileItem = {
     kind: 'quote',
     label: 'Orçamento',
     url: blob.url,
   };
+
+  // Check if this exact blob already exists (same URL)
+
 
   // invoice (single canonical entry)
   const invoiceFile: FileItem | null = invoiceUrl

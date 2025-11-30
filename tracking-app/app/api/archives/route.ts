@@ -40,6 +40,7 @@ export async function GET(req: Request) {
     to: 'ENTREGUE',
     order: {
       status: 'ENTREGUE',
+      deletedAt: null,  
       ...(search
         ? {
             OR: [
