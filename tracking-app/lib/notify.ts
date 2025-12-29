@@ -11,6 +11,7 @@ export type OrderForEmail = {
   publicToken: string;
   trackingNumber?: string | null;
   eta?: Date | null;
+  expeditionPeriod?: 'MANHA' | 'TARDE' | null; 
   status?: Status;
   customer: { name: string; email: string };
   id?: string; // optional, for admin notifications
@@ -32,12 +33,13 @@ export async function notifyStatusChanged(order: OrderForEmail & { status: Statu
     to: order.customer.email,
     subject: 'GOLDSTAR • Estado atualizado',
     react: OrderStatusChangedEmail({
-      customerName: order.customer.name,
-      publicToken: order.publicToken,
-      newStatus: order.status,
-      eta: order.eta ? order.eta.toISOString() : null,
-      trackingNumber: order.trackingNumber ?? null,
-    }),
+    customerName: order.customer.name,
+    publicToken: order.publicToken,
+    newStatus: order.status,
+    eta: order.eta ? order.eta.toISOString() : null,
+    expeditionPeriod: order.expeditionPeriod ?? null, 
+    trackingNumber: order.trackingNumber ?? null,
+  }),
   });
 }
 

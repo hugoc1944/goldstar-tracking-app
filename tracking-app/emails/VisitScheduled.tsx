@@ -6,23 +6,43 @@ import Layout from './_Layout';
 export function VisitScheduledEmail({
   customerName,
   visitAtISO,
+  visitPeriod,
   publicLink,
 }: {
   customerName: string;
-  visitAtISO: string;   // ISO string (required here)
+  visitAtISO: string;        // ISO date (yyyy-mm-dd or ISO)
+  visitPeriod: 'MANHA' | 'TARDE';
   publicLink: string;
 }) {
   const dt = new Date(visitAtISO);
-  const when = isNaN(dt.getTime())
+
+  const formattedDate = isNaN(dt.getTime())
     ? visitAtISO
-    : new Intl.DateTimeFormat('pt-PT', { dateStyle: 'full', timeStyle: 'short' }).format(dt);
+    : new Intl.DateTimeFormat('pt-PT', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(dt);
+
+  const periodNode =
+  visitPeriod === 'MANHA' ? (
+    <>
+      <b>no período da manhã</b> (entre as 08:30h e as 13:00h)
+    </>
+  ) : (
+    <>
+      <b>no período da tarde</b> (entre as 14:00h e as 18:00h)
+    </>
+  );
 
   return (
-    <Layout preview={`Visita técnica agendada — ${when}`}>
+    <Layout preview={`Visita técnica agendada — ${formattedDate}`}>
       <Text>Olá {customerName},</Text>
 
       <Text>
-        Só para relembrar: a nossa equipa técnica irá visitá-lo <b>{when}</b>.
+        Informamos que a nossa equipa técnica irá visitá-lo{' '}
+        <b>{formattedDate}</b>, {periodNode}.
       </Text>
 
       <Button
@@ -40,7 +60,9 @@ export function VisitScheduledEmail({
       </Button>
 
       <Text style={{ marginTop: 16 }}>
-        Se precisar de reagendar, por favor entre em contacto via telefónia.
+        Caso este período não seja conveniente para si, solicitamos que entre em
+        contacto connosco através do <b>+351 232 599 209</b> (rede fixa nacional),
+        para que possamos proceder ao respetivo reagendamento.
       </Text>
 
       <Text style={{ color: '#525252' }}>

@@ -8,18 +8,37 @@ export function OrderStatusChangedEmail({
   customerName,
   publicToken,
   newStatus,
-  eta,            // ISO string or null
-  trackingNumber, // string or null
+  eta,                    // ISO date (yyyy-mm-dd or ISO)
+  expeditionPeriod,       // MANHA | TARDE
+  trackingNumber,         // string or null
 }: {
   customerName: string;
   publicToken: string;
   newStatus: Status;
   eta?: string | null;
+  expeditionPeriod?: 'MANHA' | 'TARDE' | null;
   trackingNumber?: string | null;
 }) {
   const base = process.env.NEXTAUTH_URL || 'http://localhost:3000';
   const link = `${base}/pedido/${publicToken}`;
   const reviewUrl = 'https://share.google/4N1TqCU1MkdOvE98I';
+
+  const formattedEta =
+    eta && !isNaN(new Date(eta).getTime())
+      ? new Intl.DateTimeFormat('pt-PT', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }).format(new Date(eta))
+      : null;
+
+  const expeditionPeriodLabel =
+    expeditionPeriod === 'MANHA'
+      ? 'no período da manhã (entre as 08:30h e as 13:00h)'
+      : expeditionPeriod === 'TARDE'
+      ? 'no período da tarde (entre as 14:00h e as 18:00h)'
+      : null;
 
   const statusLabel: Record<Status, string> = {
     PREPARACAO: 'Em preparação',
@@ -35,12 +54,19 @@ export function OrderStatusChangedEmail({
         O estado do seu pedido mudou para <b>{statusLabel[newStatus]}</b>.
       </Text>
 
-      {newStatus === 'EXPEDICAO' && eta && (
+      {newStatus === 'EXPEDICAO' && formattedEta && (
         <Text>
-          Entrega prevista: <b>{new Date(eta).toLocaleString()}</b>
+          Entrega prevista para <b>{formattedEta}</b>
+          {expeditionPeriodLabel ? `, ${expeditionPeriodLabel}` : ''}.
         </Text>
       )}
-
+      {newStatus === 'EXPEDICAO' && formattedEta && (
+        <Text style={{ marginTop: 12 }}>
+          Caso não esteja disponível neste período, solicitamos que entre em contacto
+          connosco através do <b>+351 232 599 209</b> (rede fixa nacional),
+          para que possamos proceder ao respetivo reagendamento.
+        </Text>
+      )}
       {trackingNumber && (
         <Text>
           Nº de tracking: <b>{trackingNumber}</b>

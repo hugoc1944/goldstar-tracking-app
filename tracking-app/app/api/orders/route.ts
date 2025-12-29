@@ -71,6 +71,13 @@ const CreateBody = z.object({
   }),
 });
 
+
+function normalizeDateOnly(input?: string | null) {
+  if (!input) return null;
+  const d = new Date(input);
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+}
+
 export async function POST(req: Request) {
   const admin = await requireAdminSession();
   const { client, order } = CreateBody.parse(await req.json());

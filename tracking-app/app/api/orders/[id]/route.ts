@@ -5,6 +5,8 @@ import { requireAdminSession } from '@/lib/auth-helpers';
 import { z } from 'zod';
 import { notifyStatusChanged } from '@/lib/notify';
 
+
+
 export const runtime = 'nodejs';
 const Status = z.enum(['PREPARACAO','PRODUCAO','EXPEDICAO','ENTREGUE']);
 const StatusOrPseudo = Status.or(z.literal('AGUARDA_VISITA'));
@@ -14,10 +16,11 @@ const PatchBody = z.object({
 
   // action: status
   to: StatusOrPseudo.optional(),
-  visitAt: z.string().datetime().nullable().optional(),
-  eta: z.string().datetime().nullable().optional(),
+  visitAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  eta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   note: z.string().max(500).optional(),
-
+  visitPeriod: z.enum(['MANHA', 'TARDE']).optional().nullable(),
+  expeditionPeriod: z.enum(['MANHA', 'TARDE']).optional().nullable(),
   // action: update
   client: z.object({
     name:  z.string().optional().nullable(),
@@ -76,6 +79,16 @@ const ALLOWED_NEXT: Record<z.infer<typeof Status>, z.infer<typeof Status>[]> = {
   ENTREGUE: [],
 };
 
+
+function normalizeDateOnly(input?: string | null) {
+  if (!input) return null;
+  const d = new Date(input);
+  // force date-only at UTC midnight
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+}
+
+
+
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> | { id: string } }) {
   // Unwrap params for Next 15
   const p = (ctx.params as any);
@@ -102,13 +115,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (toAny === 'AGUARDA_VISITA') {
       const now = new Date();
       const prevVisitAt = order.visitAt ?? null;
+      const prevVisitPeriod = order.visitPeriod ?? 'MANHA';
 
       const o = await prisma.order.update({
         where: { id: order.id },
         data: {
           status: 'PREPARACAO',
           visitAwaiting: true,
-          visitAt: body.visitAt ? new Date(body.visitAt) : (order.visitAt ?? null),
+          visitAt: normalizeDateOnly(body.visitAt),
+          visitPeriod: body.visitPeriod ?? 'MANHA',
           events: {
             create: {
               from: 'PREPARACAO',
@@ -132,18 +147,46 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         const { render } = await import('@react-email/render');
         const { Resend } = await import('resend');
 
-        if (body.visitAt && (!prevVisitAt || +new Date(body.visitAt) !== +prevVisitAt)) {
-          const { VisitScheduledEmail } = await import('@/emails/VisitScheduled');
+        const visitDateChanged = (() => {
+          if (!body.visitAt) return false;
+
+          const next = normalizeDateOnly(body.visitAt);
+          if (!next) return false;
+
+          if (!prevVisitAt) return true;
+
+          return next.getTime() !== prevVisitAt.getTime();
+        })();
+
+        const visitPeriodChanged =
+          body.visitPeriod !== undefined &&
+          body.visitPeriod !== null &&
+          body.visitPeriod !== prevVisitPeriod;
+
+        if (visitDateChanged || visitPeriodChanged) {
+        const { VisitScheduledEmail } = await import('@/emails/VisitScheduled');
 
           const when = new Intl.DateTimeFormat('pt-PT', {
             dateStyle: 'full',
-            timeStyle: 'short',
-          }).format(new Date(body.visitAt));
+          }).format(
+            normalizeDateOnly(body.visitAt)!
+          );
+
+          const visitAtISO =
+            body.visitAt ??
+            (prevVisitAt
+              ? prevVisitAt.toISOString().slice(0, 10)
+              : null);
+
+          if (!visitAtISO) {
+            throw new Error('visitAtISO missing while sending VisitScheduledEmail');
+          }
 
           const html = await render(
             VisitScheduledEmail({
               customerName: o.customer?.name ?? 'Cliente',
-              visitAtISO: body.visitAt,
+              visitAtISO,
+              visitPeriod: body.visitPeriod ?? prevVisitPeriod ?? 'MANHA',
               publicLink: link,
             })
           );
@@ -243,10 +286,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ ok: true });
     }
 
-    // normal transition validations
-    if (!ALLOWED_NEXT[order.status as z.infer<typeof Status>] || !ALLOWED_NEXT[order.status as z.infer<typeof Status>].includes(to)) {
-      return NextResponse.json({ error: `Transição inválida: ${order.status} → ${to}` }, { status: 400 });
-    }
+    const isSameStatusUpdate =
+    order.status === 'EXPEDICAO' && to === 'EXPEDICAO';
+
+  if (
+    !isSameStatusUpdate &&
+    (!ALLOWED_NEXT[order.status as z.infer<typeof Status>] ||
+      !ALLOWED_NEXT[order.status as z.infer<typeof Status>].includes(to))
+  ) {
+    return NextResponse.json(
+      { error: `Transição inválida: ${order.status} → ${to}` },
+      { status: 400 }
+    );
+  }
 
     // perform transition in a transaction
     const updated = await prisma.$transaction(async (tx) => {
@@ -255,12 +307,22 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         data: {
           status: to,
           ...(to === 'EXPEDICAO'
-            ? (body.eta ? { eta: new Date(body.eta) } : {})
+            ? {
+                eta: normalizeDateOnly(body.eta),
+                expeditionPeriod: body.expeditionPeriod ?? 'MANHA',
+              }
             : to === 'ENTREGUE'
-            ? { eta: null }
+            ? { eta: null, expeditionPeriod: null }
             : {}),
         },
-        select: { id: true, status: true, eta: true, publicToken: true, trackingNumber: true },
+        select: {
+          id: true,
+          status: true,
+          eta: true,
+          expeditionPeriod: true,
+          publicToken: true,
+          trackingNumber: true,
+        },
       });
 
       await tx.statusEvent.create({
@@ -278,13 +340,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     try {
       await notifyStatusChanged({
-        id: order.id,
-        publicToken: order.publicToken,
-        status: updated.status,
-        eta: updated.eta ?? null,
-        trackingNumber: updated.trackingNumber ?? null,
-        customer: { name: order.customer.name, email: order.customer.email },
-      });
+      id: order.id,
+      publicToken: order.publicToken,
+      status: updated.status,
+      eta: updated.eta ?? null,
+      expeditionPeriod: updated.expeditionPeriod ?? null,
+      trackingNumber: updated.trackingNumber ?? null,
+      customer: { name: order.customer.name, email: order.customer.email },
+    });
     } catch (e) {
       console.warn('notifyStatusChanged falhou:', e);
     }
@@ -529,9 +592,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       },
       files: (order.filesJson as any[]) ?? [],
       state: {
-        status:        order.status,
+        status: order.status,
         visitAwaiting: order.visitAwaiting ?? false,
-        visitAt:       order.visitAt ?? null,
+        visitAt: order.visitAt ?? null,
+        visitPeriod: order.visitPeriod ?? 'MANHA',
+        eta: order.eta ?? null,                    
+        expeditionPeriod: order.expeditionPeriod ?? 'MANHA',
       },
     },
   });

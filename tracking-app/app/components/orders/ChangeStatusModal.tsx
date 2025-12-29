@@ -61,14 +61,19 @@ export function ChangeStatusModal({
   // Local pickers
   const [etaLocal, setEtaLocal] = useState('');        // EXPEDIÇÃO only
   const [visitAtLocal, setVisitAtLocal] = useState(''); // AGUARDA_VISITA only
-  function isoToLocal(iso: string) {
-    const d = new Date(iso);
-    const off = d.getTimezoneOffset();
-    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
-  }
+
+  const [visitPeriod, setVisitPeriod] = useState<'MANHA' | 'TARDE'>('MANHA');
+  const [expeditionPeriod, setExpeditionPeriod] = useState<'MANHA' | 'TARDE'>('MANHA');
+
+
 
   const [initialVisitAtLocal, setInitialVisitAtLocal] = useState('');
+  const [initialVisitPeriod, setInitialVisitPeriod] =
+    useState<'MANHA' | 'TARDE'>('MANHA');
 
+  const [initialEtaLocal, setInitialEtaLocal] = useState('');
+  const [initialExpeditionPeriod, setInitialExpeditionPeriod] =
+    useState<'MANHA' | 'TARDE'>('MANHA');
   // Prefill the visit date when the order is in "Aguarda visita"
   useEffect(() => {
     if (current !== 'AGUARDA_VISITA') return;
@@ -78,27 +83,58 @@ export function ChangeStatusModal({
         if (!r.ok) return;
         const data = await r.json();
         const iso = data?.forModal?.state?.visitAt ?? null;
+        const period = data?.forModal?.state?.visitPeriod ?? 'MANHA';
+
         if (iso) {
-          const v = isoToLocal(iso);
-          setVisitAtLocal(v);
-          setInitialVisitAtLocal(v);
+          const dateOnly = String(iso).slice(0, 10);
+          setVisitAtLocal(dateOnly);
+          setInitialVisitAtLocal(dateOnly);
+
+          setVisitPeriod(period);
+          setInitialVisitPeriod(period);
         }
       } catch {}
     })();
   }, [orderId, current]);
-  const nowLocal = useMemo(() => {
-    const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
-    return d.toISOString().slice(0, 16);
-  }, []);
+  // Prefill ETA when order is already in "Em expedição"
+  useEffect(() => {
+    if (current !== 'EXPEDICAO') return;
+    (async () => {
+      try {
+        const r = await fetch(`/api/orders/${orderId}`, { cache: 'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+
+        const iso = data?.forModal?.state?.eta ?? null;
+        const period = data?.forModal?.state?.expeditionPeriod ?? 'MANHA';
+
+        if (iso) {
+          const dateOnly = String(iso).slice(0, 10);
+          setEtaLocal(dateOnly);
+          setInitialEtaLocal(dateOnly);
+
+          setExpeditionPeriod(period);
+          setInitialExpeditionPeriod(period);
+        }
+      } catch {}
+    })();
+  }, [orderId, current]);
 
   const next = FLOW[current];
   const showEta = to === 'EXPEDICAO';
   const showVisit = to === 'AGUARDA_VISITA';
 
   useEffect(() => {
-    if (to !== 'EXPEDICAO') setEtaLocal('');
-    if (to !== 'AGUARDA_VISITA') setVisitAtLocal('');
-  }, [to]);
+  if (to !== 'EXPEDICAO' && current === 'EXPEDICAO') {
+    setEtaLocal('');
+    setExpeditionPeriod('MANHA');
+  }
+
+  if (to !== 'AGUARDA_VISITA' && current === 'AGUARDA_VISITA') {
+    setVisitAtLocal('');
+    setVisitPeriod('MANHA');
+  }
+}, [to, current]);
 
   // ESC to close
   useEffect(() => {
@@ -112,11 +148,18 @@ export function ChangeStatusModal({
   async function submit() {
     const payload: any = { action: 'status', to };
 
-    if (to === 'EXPEDICAO' && etaLocal) {
-      payload.eta = new Date(etaLocal).toISOString();
+    if (to === 'EXPEDICAO') {
+      if (!etaLocal) {
+        throw new Error('ETA em falta para expedição');
+      }
+
+      payload.eta = etaLocal; // always send
+      payload.expeditionPeriod = expeditionPeriod;
     }
+
     if (to === 'AGUARDA_VISITA' && visitAtLocal) {
-      payload.visitAt = new Date(visitAtLocal).toISOString();
+      payload.visitAt = visitAtLocal; // yyyy-mm-dd
+      payload.visitPeriod = visitPeriod;
     }
 
     setSaving(true);
@@ -137,10 +180,23 @@ export function ChangeStatusModal({
   if (!Portal) return null;
 
   const stateChanged = to !== current;
-  const visitChanged = to === 'AGUARDA_VISITA' && visitAtLocal && visitAtLocal !== initialVisitAtLocal;
-  const btnLabel = stateChanged ? 'Alterar Estado' : 'Guardar Estado';
-  const canSubmit = stateChanged || visitChanged || (to === 'EXPEDICAO' && !!etaLocal);
+  const visitChanged =
+    to === 'AGUARDA_VISITA' &&
+    visitAtLocal &&
+    (visitAtLocal !== initialVisitAtLocal ||
+      visitPeriod !== initialVisitPeriod);
 
+  const expeditionChanged =
+    to === 'EXPEDICAO' &&
+    etaLocal &&
+    (etaLocal !== initialEtaLocal ||
+      expeditionPeriod !== initialExpeditionPeriod);
+
+  const btnLabel = stateChanged ? 'Alterar Estado' : 'Guardar Estado';
+  const canSubmit =
+    stateChanged ||
+    visitChanged ||
+    expeditionChanged;
 
   return Portal(
     <div
@@ -211,34 +267,74 @@ export function ChangeStatusModal({
 
           {/* Data da Visita — only for "Aguarda visita" */}
           {showVisit && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-zinc-700">
-                Data da Visita <span className="text-zinc-400 font-normal">(opcional)</span>
-              </label>
-              <input
-                type="datetime-local"
-                value={visitAtLocal}
-                onChange={(e) => setVisitAtLocal(e.target.value)}
-                className="w-64 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400"
-                min={nowLocal}
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-zinc-700">
+                  Data da Visita
+                </label>
+                <input
+                  type="date"
+                  value={visitAtLocal}
+                  onChange={(e) => setVisitAtLocal(e.target.value)}
+                  className="w-64 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-zinc-700">
+                  Período do Dia
+                </label>
+                <select
+                  value={visitPeriod}
+                  onChange={(e) => setVisitPeriod(e.target.value as 'MANHA' | 'TARDE')}
+                  className="w-64 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400"
+                >
+                  <option value="MANHA">
+                    Manhã (08:30 – 13:00)
+                  </option>
+                  <option value="TARDE">
+                    Tarde (14:00 – 18:00)
+                  </option>
+                </select>
+              </div>
             </div>
           )}
 
           {/* ETA — only for "Em expedição" */}
           {showEta && (
+          <div className="space-y-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-zinc-700">
-                Data Estimada de Entrega <span className="text-zinc-400 font-normal">(opcional)</span>
+                Data prevista de Expedição
               </label>
               <input
-                type="datetime-local"
+                type="date"
                 value={etaLocal}
                 onChange={(e) => setEtaLocal(e.target.value)}
                 className="w-64 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400"
-                min={nowLocal}
               />
             </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700">
+                Período do Dia
+              </label>
+              <select
+                value={expeditionPeriod}
+                onChange={(e) =>
+                  setExpeditionPeriod(e.target.value as 'MANHA' | 'TARDE')
+                }
+                className="w-64 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400"
+              >
+                <option value="MANHA">
+                  Manhã (08:30 – 13:00)
+                </option>
+                <option value="TARDE">
+                  Tarde (14:00 – 18:00)
+                </option>
+              </select>
+            </div>
+          </div>
           )}
 
           {/* Submit */}
