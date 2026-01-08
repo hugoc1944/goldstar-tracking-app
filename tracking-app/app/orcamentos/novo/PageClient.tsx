@@ -11,6 +11,8 @@ import type { SubmitHandler, Resolver } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import Image from 'next/image';
 import { Suspense } from 'react';
+import { track } from "@/lib/analytics";
+
 declare const grecaptcha: any;
 
 function uniqByValue(items: {value:string; label:string; order?:number}[]) {
@@ -1541,12 +1543,6 @@ const onSubmit: SubmitHandler<FormValues> = async (values) => {
     if (submitting || locked) return;
     setSubmitting(true);
 
-    if (typeof window !== "undefined" && window.gtag) {
-      window.gtag('event', 'pedir_orcamento_click', {
-        page: 'orcamentos_novo',
-      });
-    }
-
     // 🔐 reCAPTCHA v3 token
     let token = "";
     try {
@@ -1591,7 +1587,13 @@ const onSubmit: SubmitHandler<FormValues> = async (values) => {
 
       const { id } = await res.json();
 
-      // 🔒 lock permanently until navigation (prevents any flicker re-enable)
+      //  MAIN CONVERSION EVENT
+      track("orcamento_send", {
+        model: values.modelKey,
+        deliveryType: values.deliveryType,
+      });
+
+      //  lock permanently until navigation (prevents any flicker re-enable)
       setLocked(true);
 
       // navigate and bail out without resetting submitting
@@ -2041,6 +2043,11 @@ React.useEffect(() => {
         href={simulatorUrl}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={() => {
+          track("orcamento_back_to_simulador", {
+            model: form.getValues("modelKey"),
+          });
+        }}
         className="inline-flex w-full sm:w-auto justify-center items-center gap-2 rounded-xl bg-[#122C4F] px-4 py-3 text-white hover:bg-black/90
                   focus:outline-none focus:ring-2 focus:ring-yellow-400/50
                   shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]"
