@@ -1592,12 +1592,12 @@ const onSubmit: SubmitHandler<FormValues> = async (values) => {
         model: values.modelKey,
         deliveryType: values.deliveryType,
       });
+      // give GTM time to dispatch
+      setTimeout(() => {
+        setLocked(true);
+        router.replace(`/orcamentos/sucesso?id=${encodeURIComponent(id)}`);
+      }, 300);
 
-      //  lock permanently until navigation (prevents any flicker re-enable)
-      setLocked(true);
-
-      // navigate and bail out without resetting submitting
-      router.replace(`/orcamentos/sucesso?id=${encodeURIComponent(id)}`);
       return; // IMPORTANT: do not fall through
     } catch (e: any) {
       alert(e?.message || 'Não foi possível submeter o orçamento. Tente novamente.');
