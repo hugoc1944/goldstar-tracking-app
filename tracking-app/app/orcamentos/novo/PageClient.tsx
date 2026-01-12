@@ -2041,8 +2041,6 @@ React.useEffect(() => {
     <div className="sm:ml-auto w-full sm:w-auto">
       <a
         href={simulatorUrl}
-        target="_blank"
-        rel="noopener noreferrer"
         onClick={() => {
           track("orcamento_back_to_simulador", {
             model: form.getValues("modelKey"),
