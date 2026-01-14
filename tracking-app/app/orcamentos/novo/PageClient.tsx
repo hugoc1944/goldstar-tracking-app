@@ -1221,6 +1221,14 @@ if (rawSer) {
     if (!key) return false;
     return /painel[_-]?v(2|3|4)\b/i.test(key.toLowerCase());
   }
+  function isPainelFixoVariant(key?: string) {
+    if (!key) return false;
+    const k = key.toLowerCase();
+    return (
+      k.includes('painel_fixo') ||
+      /painelfixo[_-]?v(2|3|4)\b/.test(k)
+    );
+  }
   // Helpers to get filtered options based on rule
   const handles = React.useMemo(() => {
     if (!catalog) return [];
@@ -1354,7 +1362,7 @@ const complementoFiltered = React.useMemo(() => {
 
 
   const allowTowel1 = !!rule?.allowTowel1;
-  const hideHandles = !!rule?.hideHandles;
+  const hideHandles = !!rule?.hideHandles || isPainelFixoVariant(modelKey);
 
 // 1) Set default "finish" and "glass" once options are known
 React.useEffect(() => {
@@ -1918,17 +1926,17 @@ const fileInputRef = React.useRef<HTMLInputElement>(null);
 React.useEffect(() => {
   if (!modelKey || !rule) return;
 
-  if (rule.hideHandles) {
-    form.setValue('handleKey', undefined, { shouldDirty:true });
+  if (hideHandles) {
+    form.setValue('handleKey', undefined, { shouldDirty: true });
     return;
   }
 
   const curr = form.getValues('handleKey');
   if (!curr || curr === '') {
     const def = isAbrirModel(modelKey) ? 'h4' : 'h6';
-    form.setValue('handleKey', def, { shouldDirty:true });
+    form.setValue('handleKey', def, { shouldDirty: true });
   }
-}, [modelKey, rule]);
+}, [modelKey, rule, hideHandles]);
 
   const values = form.watch();
 
