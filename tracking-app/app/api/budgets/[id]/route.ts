@@ -9,11 +9,12 @@ import { z } from 'zod';
 
 const BudgetUpdateSchema = BudgetCreateSchema.partial().merge(
   z.object({
-    priceCents:        z.number().int().nonnegative().optional(),
-    installPriceCents: z.number().int().nonnegative().optional(),
-    quotedPdfUrl:      z.string().url().optional(),
-    notes:             z.string().optional(),
-    deletedAt:         z.coerce.date().optional(),
+    priceCents:         z.number().int().nonnegative().optional(),
+    installPriceCents:  z.number().int().nonnegative().optional(),
+    deliveryPriceCents: z.number().int().nonnegative().optional(),
+    quotedPdfUrl:       z.string().url().optional(),
+    notes:              z.string().optional(),
+    deletedAt:          z.coerce.date().optional(),
   })
 );
 

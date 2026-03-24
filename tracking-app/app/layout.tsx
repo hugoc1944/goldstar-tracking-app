@@ -7,9 +7,17 @@ import Script from "next/script";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+const BASE_URL = "https://tracking.mfn.pt";
+
 export const metadata: Metadata = {
-  title: "Goldstar • Tracking App",
-  description: "Gestão e acompanhamento de pedidos Goldstar em tempo real",
+  metadataBase: new URL(BASE_URL),
+  title: {
+    default: "Goldstar | Resguardos de Duche por Medida",
+    template: "%s | Goldstar",
+  },
+  description:
+    "Goldstar — resguardos e boxes de duche por medida, fabricados em Portugal. Peça o seu orçamento personalizado online.",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

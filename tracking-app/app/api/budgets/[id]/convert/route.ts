@@ -117,30 +117,12 @@ const existingFiles: FileItem[] = existingFilesRaw
     ...photoFiles,
   ];
 
-  // 6) upsert customer
-  const customer = await prisma.customer.upsert({
-    where: { email: saved.email },
-    update: {
-      name: saved.name,
-      phone: saved.phone ?? null,
-      nif: saved.nif ?? null,
-      address: saved.address ?? null,
-      postal: saved.postalCode ?? null,
-      city: saved.city ?? null,
-    },
-    create: {
-      name: saved.name,
-      email: saved.email,
-      phone: saved.phone ?? null,
-      nif: saved.nif ?? null,
-      address: saved.address ?? null,
-      postal: saved.postalCode ?? null,
-      city: saved.city ?? null,
-    },
-  });
-  customerId = customer.id;
+  // Note: Customer is NOT created here. A Customer record is only created when
+  // the client confirms the budget (pedido/[publicToken]/confirm), at which point
+  // an Order is also created. This keeps the clients table clean — only people
+  // with actual Orders appear there.
 
-  // 7) publicToken handling + persist filesJson + quotedPdfUrl + sentAt
+  // 6) publicToken handling + persist filesJson + quotedPdfUrl + sentAt
   // Try to keep DB token if present; otherwise generate and save.
   const existingToken = (saved as any).publicToken;
   if (existingToken) {
@@ -246,6 +228,7 @@ const existingFiles: FileItem[] = existingFilesRaw
       const { Resend } = await import('resend');
       const resend = new Resend(process.env.RESEND_API_KEY!);
       const fromAddr = process.env.EMAIL_FROM || 'no-reply@goldstar';
+      const replyTo = process.env.ROOT_EMAIL || undefined;
       const toAddr = String(saved.email || '').trim();
       const textFallback = `Olá ${saved.name ?? 'Cliente'},\n\nO seu orçamento está pronto. Confirme em: ${confirmUrl}\n\nPDF: ${blob.url}\n\nObrigado.`;
 
@@ -272,6 +255,7 @@ const existingFiles: FileItem[] = existingFilesRaw
         html: htmlResolved,
         text: textFallback,
         attachments: resendAttachments,
+        ...(replyTo ? { replyTo } : {}),
       });
 
       // normalize response id
@@ -316,13 +300,14 @@ const existingFiles: FileItem[] = existingFilesRaw
 const ConvertSchema = z.object({
   priceCents: z.number().int().nonnegative().optional(),
   installPriceCents: z.number().int().nonnegative().optional(),
+  deliveryPriceCents: z.number().int().nonnegative().optional(),
   notes: z.string().optional(),
 });
 
-type Ctx = { params: { id: string } }; // or Promise<{id:string}>
+type Ctx = { params: Promise<{ id: string }> };
 export async function POST(req: Request, ctx: Ctx) {
   await requireAdminSession();
-  const id = ctx.params.id;
+  const { id } = await ctx.params;
   const budgetId = id;
 
   const url = new URL(req.url);
@@ -363,6 +348,7 @@ export async function POST(req: Request, ctx: Ctx) {
     const data: any = {};
     if (typeof updates.priceCents === 'number') data.priceCents = updates.priceCents;
     if (typeof updates.installPriceCents === 'number') data.installPriceCents = updates.installPriceCents;
+    if (typeof updates.deliveryPriceCents === 'number') data.deliveryPriceCents = updates.deliveryPriceCents;
     if (typeof updates.notes === 'string') data.notes = updates.notes;
 
     if (Object.keys(data).length) {

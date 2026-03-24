@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { render } from '@react-email/render';
 import { Resend } from 'resend';
 import { BudgetReceivedEmail } from '@/emails/BudgetReceived';
+import { BudgetAdminNotificationEmail } from '@/emails/BudgetAdminNotification';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -210,12 +211,35 @@ export async function POST(req: NextRequest) {
           })
         );
         const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+        const replyTo = process.env.ROOT_EMAIL || undefined;
         await resend.emails.send({
           from: `GOLDSTAR <${fromAddr}>`,
           to: created.email,
           subject: 'Recebemos o seu pedido de orçamento',
           html,
+          ...(replyTo ? { replyTo } : {}),
         });
+
+        // Admin notification — fire-and-forget
+        const adminTo = process.env.ROOT_EMAIL;
+        if (adminTo) {
+          const adminHtml = await render(
+            BudgetAdminNotificationEmail({
+              budgetId: created.id,
+              customerName: created.name || 'Cliente',
+              customerEmail: created.email || '',
+              customerPhone: created.phone,
+              city: created.city,
+              modelKey: created.modelKey,
+            })
+          );
+          await resend.emails.send({
+            from: `GOLDSTAR <${fromAddr}>`,
+            to: adminTo,
+            subject: `Novo pedido de orçamento — ${created.name}`,
+            html: adminHtml,
+          });
+        }
       }
     } catch (e) {
       console.warn('BudgetReceived email failed:', e);

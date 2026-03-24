@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
+import { SimulatorButton } from '@/app/components/ui/SimulatorButton';
 
 /* ---------------- Schema (admin version) ---------------- */
 /* --- Loader (Goldstar) --- */
@@ -249,7 +250,8 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
   // local pricing in € (editable)
   const [priceEuro, setPriceEuro] = React.useState<string>(centsToEuro(budget.priceCents));
   const [installEuro, setInstallEuro] = React.useState<string>(centsToEuro(budget.installPriceCents));
-  const totalEuro = parseEuro(priceEuro) + parseEuro(installEuro);
+  const [deliveryEuro, setDeliveryEuro] = React.useState<string>(centsToEuro(budget.deliveryPriceCents));
+  const totalEuro = parseEuro(priceEuro) + parseEuro(installEuro) + parseEuro(deliveryEuro);
 
   // Catalog + rule (same as public page)
   const [catalog, setCatalog] = React.useState<Catalog | null>(null);
@@ -468,6 +470,8 @@ React.useEffect(() => {
   }
 }, [form.watch('glassTypeKey'), modelKey]);
 
+const fv = form.watch();
+
 const saveAll: SubmitHandler<FormValues> = async (values) => {
   const toMm = (cm?: number) => (cm == null ? undefined : Math.round(cm * 10));
 
@@ -475,6 +479,7 @@ const saveAll: SubmitHandler<FormValues> = async (values) => {
     ...values,
     priceCents: toCents(priceEuro),
     installPriceCents: toCents(installEuro),
+    deliveryPriceCents: toCents(deliveryEuro),
     notes: values.notes ?? undefined,
     widthMm:  toMm(values.widthMm),
     heightMm: toMm(values.heightMm),
@@ -502,6 +507,7 @@ const saveAll: SubmitHandler<FormValues> = async (values) => {
       body: JSON.stringify({
         priceCents: toCents(priceEuro),
         installPriceCents: toCents(installEuro),
+        deliveryPriceCents: toCents(deliveryEuro),
         notes: form.getValues('notes') || undefined,
       }),
     });
@@ -542,6 +548,7 @@ const saveAll: SubmitHandler<FormValues> = async (values) => {
   ...form.getValues(),
   priceCents: pCents,
   installPriceCents: priceCents(installEuro),
+  deliveryPriceCents: priceCents(deliveryEuro),
   widthMm:  toMm(form.getValues('widthMm')),
   heightMm: toMm(form.getValues('heightMm')),
   depthMm:  toMm(form.getValues('depthMm')),
@@ -618,7 +625,32 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
 
         {/* Right: Modelo & Customização (mirrors public form) */}
         <section className="space-y-3">
-        <h2 className="text-lg font-medium">Modelo & Opções</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-medium">Modelo & Opções</h2>
+          <SimulatorButton
+            modelKey={fv.modelKey}
+            finishKey={fv.finishKey}
+            handleKey={fv.handleKey}
+            glassTypeKey={isTurboModelKey(fv.modelKey) ? undefined : fv.glassTypeKey}
+            acrylicKey={isTurboModelKey(fv.modelKey)
+              ? ((fv.acrylicKey && fv.acrylicKey !== 'nenhum') ? fv.acrylicKey : 'aguaviva')
+              : fv.acrylicKey}
+            serigrafiaKey={fv.serigrafiaKey}
+            serigrafiaColor={fv.serigrafiaColor}
+            fixingBarMode={fv.fixingBarMode}
+            complementos={fv.complementos}
+            barColor={fv.barColor}
+            visionSupport={fv.visionSupport}
+            towelColorMode={fv.towelColorMode}
+            shelfColorMode={fv.shelfColorMode}
+            shelfHeightPct={fv.shelfHeightPct}
+            cornerChoice={fv.cornerChoice}
+            compact
+            newTab
+            showIcon={false}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-yellow-400 bg-yellow-400 px-3 py-1.5 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-yellow-300 transition-colors"
+          />
+        </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* Modelo */}
@@ -978,7 +1010,7 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
     <section className="space-y-4">
     <h2 className="text-lg font-medium">Preço</h2>
 
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         {/* Preço (EUR) */}
         <label className="block">
         <span className="block text-sm mb-1">Preço *</span>
@@ -1003,6 +1035,18 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
         />
         </label>
 
+        {/* Entrega (EUR) */}
+        <label className="block">
+        <span className="block text-sm mb-1">Entrega</span>
+        <input
+            className="w-full border rounded px-3 py-2"
+            inputMode="decimal"
+            value={deliveryEuro}
+            onChange={(e) => setDeliveryEuro(e.target.value)}
+            placeholder="0,00"
+        />
+        </label>
+
         {/* Total (read only) */}
         <label className="block">
         <span className="block text-sm mb-1">Total atual</span>
@@ -1010,7 +1054,8 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
             {(() => {
             const p = Number(String(priceEuro || '0').replace(',', '.')) || 0;
             const i = Number(String(installEuro || '0').replace(',', '.')) || 0;
-            return (p + i).toFixed(2).replace('.', ',') + ' €';
+            const d = Number(String(deliveryEuro || '0').replace(',', '.')) || 0;
+            return (p + i + d).toFixed(2).replace('.', ',') + ' €';
             })()}
         </div>
         </label>

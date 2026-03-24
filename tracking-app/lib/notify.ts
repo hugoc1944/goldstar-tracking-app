@@ -76,27 +76,22 @@ export async function notifySupportMessage(args: {
   customer: { name: string; email: string };
   message: string;
 }) {
-  const to = process.env.SUPPORT_TO!;
-  if (!to) {
-    console.warn('notifySupportMessage: SUPPORT_TO not set');
-    return;
+  const supportTo = process.env.SUPPORT_TO;
+  const rootEmail = process.env.ROOT_EMAIL;
+  const recipients = [...new Set([supportTo, rootEmail].filter(Boolean))] as string[];
+  if (recipients.length === 0) {
+    throw new Error("notifySupportMessage: neither SUPPORT_TO nor ROOT_EMAIL is set");
   }
 
-
-  // Plain fallback in case you don’t want a separate email template:
-  const subject = `GOLDSTAR • Mensagem do cliente · Pedido #${args.orderId.slice(0, 8)}`;
-
-  console.log("TOOO----"+to)
   await sendMail({
-  to,
-  
-  subject,
-  react: ClientMessageToAdminEmail({
-    adminEmail: to,
-    orderId: args.orderId,
-    customerName: args.customer.name,
-    customerEmail: args.customer.email,
-    message: args.message,
-  }),
-});
+    to: recipients,
+    subject: `GOLDSTAR • Mensagem do cliente · Pedido #${args.orderId.slice(0, 8)}`,
+    react: ClientMessageToAdminEmail({
+      adminEmail: recipients[0],
+      orderId: args.orderId,
+      customerName: args.customer.name,
+      customerEmail: args.customer.email,
+      message: args.message,
+    }),
+  });
 }

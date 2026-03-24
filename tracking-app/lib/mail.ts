@@ -12,7 +12,14 @@ function getResend() {
   return resend;
 }
 
-export async function sendMail(opts: { to: string; subject: string; react: ReactElement }) {
+export async function sendMail(opts: { to: string | string[]; subject: string; react: ReactElement }) {
   const from = process.env.EMAIL_FROM || 'no-reply@example.com';
-  return getResend().emails.send({ from, to: opts.to, subject: opts.subject, react: opts.react });
+  const replyTo = process.env.ROOT_EMAIL || undefined;
+  return getResend().emails.send({
+    from,
+    to: opts.to,
+    subject: opts.subject,
+    react: opts.react,
+    ...(replyTo ? { replyTo } : {}),
+  });
 }

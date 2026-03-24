@@ -175,6 +175,7 @@ export async function POST(req: Request) {
     const { Resend } = await import('resend');
     const resend = new Resend(process.env.RESEND_API_KEY!);
     const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+    const replyTo = process.env.ROOT_EMAIL || undefined;
 
     // 1) Visit scheduled
     if (scheduledToEmail.length) {
@@ -193,6 +194,7 @@ export async function POST(req: Request) {
           to: x.email,
           subject: 'Visita técnica agendada',
           html,
+          ...(replyTo ? { replyTo } : {}),
         });
       }
     }
@@ -216,6 +218,7 @@ export async function POST(req: Request) {
           to: x.email,
           subject: 'Visita concluída — o seu pedido está em preparação',
           html,
+          ...(replyTo ? { replyTo } : {}),
         });
       }
     }
@@ -239,6 +242,7 @@ export async function POST(req: Request) {
           to: x.email,
           subject: `Atualização do seu pedido — ${x.newStatus === 'EXPEDICAO' ? 'Em expedição' : x.newStatus === 'PRODUCAO' ? 'Em produção' : x.newStatus === 'ENTREGUE' ? 'Entregue' : 'Em preparação'}`,
           html,
+          ...(replyTo ? { replyTo } : {}),
         });
       }
     }

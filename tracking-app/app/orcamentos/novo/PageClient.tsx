@@ -12,6 +12,7 @@ import { Controller } from 'react-hook-form';
 import Image from 'next/image';
 import { Suspense } from 'react';
 import { track } from "@/lib/analytics";
+import { SimulatorButton } from '@/app/components/ui/SimulatorButton';
 
 declare const grecaptcha: any;
 
@@ -1174,11 +1175,11 @@ if (rawSer) {
     }
   }
     // Towel/shelf color modes (enums), accept ?towel=padrao&... or ?towelColor=...
-    const towel = (search.get('towel') ?? search.get('towelColor'))?.toLowerCase();
+    const towel = (search.get('towelColorMode') ?? search.get('towel') ?? search.get('towelColor'))?.toLowerCase();
     if (towel === 'padrao' || towel === 'acabamento') {
       form.setValue('towelColorMode', towel as any, { shouldDirty: false });
     }
-    const shelf = (search.get('shelf') ?? search.get('shelfColor'))?.toLowerCase();
+    const shelf = (search.get('shelfColorMode') ?? search.get('shelf') ?? search.get('shelfColor'))?.toLowerCase();
     if (shelf === 'padrao' || shelf === 'acabamento') {
       form.setValue('shelfColorMode', shelf as any, { shouldDirty: false });
     }
@@ -1862,27 +1863,6 @@ const groupedModels = React.useMemo(() => {
 }, [catalog]);
 
 
-// Build the `model` query for the external simulator from the current model
-const simModelParam = React.useMemo(() => {
-  const current = (form.getValues('modelKey') || '').trim();
-  if (!current) return '';
-
-  // Normalize separators
-  const parts = current.replace(/-/g, '_').split('_').filter(Boolean);
-
-  // Detect trailing vN (case-insensitive)
-  const tail = parts[parts.length - 1] || '';
-  const vMatch = tail.match(/^v(\d+)$/i);
-
-  // Base = everything before vN; join as PascalCase with NO separators
-  const baseParts = vMatch ? parts.slice(0, -1) : parts;
-  const basePascal = baseParts
-    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
-    .join('');
-
-  // If we had a version, append _Vn
-  return vMatch ? `${basePascal}_V${vMatch[1]}` : basePascal;
-}, [modelKey]);
   const selectedFinish = form.watch('finishKey');
   const fixingBarOptions = React.useMemo(
     () => [
@@ -1940,99 +1920,6 @@ React.useEffect(() => {
 
   const values = form.watch();
 
-  const simulatorUrl = React.useMemo(() => {
-    if (!simModelParam) {
-      return 'https://simulador.mfn.pt/';
-    }
-
-    const params = new URLSearchParams();
-    params.set('model', simModelParam);
-
-    // Acabamento
-    if (values.finishKey) {
-      params.set('finish', values.finishKey);
-    }
-
-    // Vidro / Monocromático
-    if (values.glassTypeKey) {
-      const g = values.glassTypeKey;
-      let glassToken = g;
-
-      // Map "mono_gris" → "gris", "mono_bronze" → "bronze", etc.
-      if (g.startsWith('mono_')) {
-        glassToken = g.replace(/^mono_/, '');
-      }
-
-      params.set('glass', glassToken);
-    }
-
-    // Puxador (se modelo permitir)
-    if (!hideHandles && values.handleKey) {
-      params.set('handle', values.handleKey);
-    }
-
-    // Complemento
-    if (values.complementos?.length) {
-      const clean = values.complementos.filter(c => c !== 'nenhum');
-      if (clean.length > 0) {
-        params.set('complemento', clean.join(','));
-      }
-    }
-
-    // Barra de fixação
-    if (rule?.hasFixingBar && values.fixingBarMode) {
-      params.set('fixingBarMode', values.fixingBarMode);
-    }
-
-    // Acrílico
-    if (values.acrylicKey && values.acrylicKey !== 'nenhum') {
-      params.set('acrylic', values.acrylicKey);
-    }
-
-    // Serigrafia
-    if (values.serigrafiaKey && values.serigrafiaKey !== 'nenhum') {
-      const sel = serigrafias.find(o => o.value === values.serigrafiaKey);
-      const silkId = sel ? silkIdFrom(sel.value, sel.label) : values.serigrafiaKey;
-      params.set('serigrafia', silkId);
-
-      if (values.serigrafiaColor) {
-        // use one of the names the simulator already accepts
-        params.set('serigrafiaColor', values.serigrafiaColor);
-      }
-    }
-
-    // Vision
-  if (comps.includes('vision')) {
-    if (values.barColor) params.set('barColor', values.barColor);
-    if (values.visionSupport) params.set('visionSupport', values.visionSupport);
-  }
-
-    // Toalheiro 1
-    if (comps.includes('toalheiro1') && values.towelColorMode) {
-      params.set('towel', values.towelColorMode); // accepted alias in simulator
-    }
-
-    // Prateleira de Canto
-    if (comps.includes('prateleira')) {
-      if (values.shelfColorMode) {
-        params.set('shelf', values.shelfColorMode); // shelfColorMode
-      }
-      if (values.shelfHeightPct != null) {
-        params.set('altura', String(Math.round(values.shelfHeightPct)));
-      }
-      const cc = values.cornerChoice;
-      if (cc === 'corner1' || cc === 'corner2') {
-        params.set('corner', cc);
-      }
-    }
-
-    // Medidas (cm → params; simulator will interpret them)
-    if (values.widthMm)  params.set('width',  String(values.widthMm));
-    if (values.heightMm) params.set('height', String(values.heightMm));
-    if (!hideDepth && values.depthMm) params.set('depth', String(values.depthMm));
-
-    return `https://simulador.mfn.pt/?${params.toString()}`;
-  }, [simModelParam, values, hideHandles, hideDepth, rule, serigrafias]);
 
   return (
   <main className="mx-auto max-w-6xl px-4 sm:px-6 md:px-8 py-5 sm:py-6 md:py-8">
@@ -2047,20 +1934,27 @@ React.useEffect(() => {
       className="h-16 sm:h-[120px] w-auto"
     />
     <div className="sm:ml-auto w-full sm:w-auto">
-      <a
-        href={simulatorUrl}
-        onClick={() => {
-          track("orcamento_back_to_simulador", {
-            model: form.getValues("modelKey"),
-          });
-        }}
-        className="inline-flex w-full sm:w-auto justify-center items-center gap-2 rounded-xl bg-[#122C4F] px-4 py-3 text-white hover:bg-black/90
-                  focus:outline-none focus:ring-2 focus:ring-yellow-400/50
-                  shadow-[0_2px_10px_rgba(0,0,0,0.25),0_0_8px_rgba(250,204,21,0.35)]"
-      >
-        <Image src="/brand/sim_icon.png" alt="" width={28} height={28} className="h-7 w-7" priority />
-        <span className="text-[15px] font-semibold">Ver no Simulador</span>
-      </a>
+      <SimulatorButton
+        modelKey={values.modelKey}
+        finishKey={values.finishKey}
+        glassTypeKey={values.glassTypeKey}
+        handleKey={hideHandles ? undefined : values.handleKey}
+        acrylicKey={values.acrylicKey}
+        serigrafiaKey={values.serigrafiaKey}
+        serigrafiaColor={values.serigrafiaColor}
+        fixingBarMode={rule?.hasFixingBar ? values.fixingBarMode : undefined}
+        complementos={values.complementos}
+        barColor={values.barColor}
+        visionSupport={values.visionSupport}
+        towelColorMode={values.towelColorMode}
+        shelfColorMode={values.shelfColorMode}
+        shelfHeightPct={values.shelfHeightPct}
+        cornerChoice={values.cornerChoice}
+        widthMm={values.widthMm}
+        heightMm={values.heightMm}
+        depthMm={hideDepth ? undefined : values.depthMm}
+        onClick={() => track("orcamento_back_to_simulador", { model: values.modelKey })}
+      />
     </div>
   </div>
 

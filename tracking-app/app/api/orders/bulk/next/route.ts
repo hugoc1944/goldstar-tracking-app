@@ -125,6 +125,7 @@ export async function POST(req: Request) {
     const { Resend } = await import('resend');
     const resend = new Resend(process.env.RESEND_API_KEY!);
     const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+    const replyTo = process.env.ROOT_EMAIL || undefined;
 
     if (concludedToEmail.length) {
       const { OrderStatusChangedEmail } = await import('@/emails/OrderStatusChanged');
@@ -144,6 +145,7 @@ export async function POST(req: Request) {
           to: x.email,
           subject: 'Visita concluída — o seu pedido está em preparação',
           html,
+          ...(replyTo ? { replyTo } : {}),
         });
       }
     }
@@ -171,6 +173,7 @@ export async function POST(req: Request) {
             : 'Em preparação'
           }`,
           html,
+          ...(replyTo ? { replyTo } : {}),
         });
       }
     }

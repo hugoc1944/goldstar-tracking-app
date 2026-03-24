@@ -193,12 +193,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
           const resend = new Resend(process.env.RESEND_API_KEY!);
           const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+          const replyTo = process.env.ROOT_EMAIL || undefined;
 
           await resend.emails.send({
             from: `GOLDSTAR <${fromAddr}>`,
             to: o.customer?.email ?? '',
             subject: `Visita técnica agendada - ${when}`,
             html,
+            ...(replyTo ? { replyTo } : {}),
           });
         } else if (!prevVisitAt && !body.visitAt) {
           const { VisitAwaitingEmail } = await import('@/emails/VisitAwaiting');
@@ -212,12 +214,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
           const resend = new Resend(process.env.RESEND_API_KEY!);
           const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+          const replyTo = process.env.ROOT_EMAIL || undefined;
 
           await resend.emails.send({
             from: `GOLDSTAR <${fromAddr}>`,
             to: o.customer?.email ?? '',
             subject: 'Aguarda visita — entraremos em contacto para agendar',
             html,
+            ...(replyTo ? { replyTo } : {}),
           });
         }
       } catch (e) {
@@ -272,12 +276,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         const { Resend } = await import('resend');
         const resend = new Resend(process.env.RESEND_API_KEY!);
         const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+        const replyTo = process.env.ROOT_EMAIL || undefined;
 
         await resend.emails.send({
           from: `GOLDSTAR <${fromAddr}>`,
           to: updated.customer?.email ?? '',
           subject: 'Visita concluída - o seu pedido está em preparação',
           html,
+          ...(replyTo ? { replyTo } : {}),
         });
       } catch (e) {
         console.warn('Falha a enviar email de visita concluída:', e);

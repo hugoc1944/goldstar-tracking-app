@@ -1,16 +1,32 @@
 import * as React from 'react';
-import { Text, Link, Button } from '@react-email/components';
+import { Text, Button, Section } from '@react-email/components';
 import Layout from './_Layout';
 
 type Status = 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE';
+
+const p: React.CSSProperties = { fontSize: 15, color: '#333333', lineHeight: '1.65', margin: '0 0 16px 0' };
+
+const statusLabel: Record<Status, string> = {
+  PREPARACAO: 'Em preparação',
+  PRODUCAO:   'Em produção',
+  EXPEDICAO:  'Em expedição',
+  ENTREGUE:   'Entregue',
+};
+
+const statusBadge: Record<Status, { bg: string; color: string }> = {
+  PREPARACAO: { bg: '#FFF8E1', color: '#92400E' },
+  PRODUCAO:   { bg: '#EFF6FF', color: '#1E40AF' },
+  EXPEDICAO:  { bg: '#F0FDF4', color: '#166534' },
+  ENTREGUE:   { bg: '#F4F4F4', color: '#111111' },
+};
 
 export function OrderStatusChangedEmail({
   customerName,
   publicToken,
   newStatus,
-  eta,                    // ISO date (yyyy-mm-dd or ISO)
-  expeditionPeriod,       // MANHA | TARDE
-  trackingNumber,         // string or null
+  eta,
+  expeditionPeriod,
+  trackingNumber,
 }: {
   customerName: string;
   publicToken: string;
@@ -40,58 +56,66 @@ export function OrderStatusChangedEmail({
       ? 'no período da tarde (entre as 14:00h e as 18:00h)'
       : null;
 
-  const statusLabel: Record<Status, string> = {
-    PREPARACAO: 'Em preparação',
-    PRODUCAO:   'Em produção',
-    EXPEDICAO:  'Em expedição',
-    ENTREGUE:   'Entregue',
-  };
+  const badge = statusBadge[newStatus];
 
   return (
     <Layout preview={`O estado do seu pedido mudou para ${statusLabel[newStatus]}`}>
-      <Text>Olá {customerName},</Text>
-      <Text>
-        O estado do seu pedido mudou para <b>{statusLabel[newStatus]}</b>.
+
+      <Text style={p}>Olá {customerName},</Text>
+
+      <Text style={{ ...p, margin: '0 0 20px 0' }}>
+        O estado do seu pedido foi atualizado:
       </Text>
 
+      {/* Status badge */}
+      <Section style={{
+        backgroundColor: badge.bg,
+        borderRadius: 4,
+        padding: '14px 20px',
+        margin: '0 0 24px 0',
+      }}>
+        <Text style={{ margin: 0, fontSize: 16, fontWeight: 700, color: badge.color }}>
+          {statusLabel[newStatus]}
+        </Text>
+      </Section>
+
       {newStatus === 'EXPEDICAO' && formattedEta && (
-        <Text>
-          Entrega prevista para <b>{formattedEta}</b>
+        <Text style={p}>
+          Entrega prevista para <strong>{formattedEta}</strong>
           {expeditionPeriodLabel ? `, ${expeditionPeriodLabel}` : ''}.
         </Text>
       )}
+
       {newStatus === 'EXPEDICAO' && formattedEta && (
-        <Text style={{ marginTop: 12 }}>
-          Caso não esteja disponível neste período, solicitamos que entre em contacto
-          connosco através do <b>+351 232 599 209</b> (rede fixa nacional),
-          para que possamos proceder ao respetivo reagendamento.
-        </Text>
-      )}
-      {trackingNumber && (
-        <Text>
-          Nº de tracking: <b>{trackingNumber}</b>
+        <Text style={p}>
+          Caso não esteja disponível neste período, contacte-nos através do{' '}
+          <strong>+351 232 599 209</strong> (rede fixa nacional) para reagendar.
         </Text>
       )}
 
-      {/* NEW: Review CTA when Entregue */}
+      {trackingNumber && (
+        <Text style={p}>
+          Número de tracking: <strong>{trackingNumber}</strong>
+        </Text>
+      )}
+
       {newStatus === 'ENTREGUE' && (
         <>
-          <Text style={{ marginTop: 14 }}>
-            Se gostou do nosso serviço, o seu feedback é muito importante para nós.
-            Deixe, por favor, a sua avaliação:
+          <Text style={p}>
+            Agradecemos a sua confiança. Se gostou do nosso serviço, ficamos muito gratos pela sua avaliação:
           </Text>
           <Button
             href={reviewUrl}
             style={{
-              backgroundColor: '#FED619',
-              color: '#fff',
-              padding: '12px 18px',
-              borderRadius: 10,
-              boxShadow:
-                '0 2px 10px rgba(0,0,0,0.25),0 0 8px rgba(250,204,21,0.35)',
+              backgroundColor: '#F5C200',
+              color: '#111111',
+              fontSize: 15,
+              fontWeight: 700,
+              padding: '14px 28px',
+              borderRadius: 4,
               textDecoration: 'none',
               display: 'inline-block',
-              marginTop: 6,
+              marginBottom: 24,
             }}
           >
             Deixar avaliação
@@ -99,12 +123,28 @@ export function OrderStatusChangedEmail({
         </>
       )}
 
-      <Text style={{ marginTop: 16 }}>
-        Pode acompanhar o seu pedido aqui:{' '}
-        <Link href={link}>{link}</Link>
+      <Button
+        href={link}
+        style={{
+          backgroundColor: '#111111',
+          color: '#ffffff',
+          fontSize: 15,
+          fontWeight: 600,
+          padding: '14px 28px',
+          borderRadius: 4,
+          textDecoration: 'none',
+          display: 'inline-block',
+          marginBottom: 24,
+        }}
+      >
+        Acompanhar o meu pedido
+      </Button>
+
+      <Text style={{ ...p, margin: 0, color: '#555555' }}>
+        Obrigado pela sua confiança,<br />
+        Equipa GOLDSTAR
       </Text>
 
-      <Text style={{ marginTop: 16 }}>Obrigado!</Text>
     </Layout>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 import React from 'react';
+import { SimulatorButton } from '@/app/components/ui/SimulatorButton';
 
 type UploadInfo = { url: string; name: string; size: number; mime?: string };
 type Opt = { value: string; label: string; order?: number; category?: string | null };
@@ -733,82 +734,6 @@ React.useEffect(() => {
 
   // Admin always allows shelf the same way public orçamento does
   const allowShelf  = true;
-const simModelParam = React.useMemo(
-  () => simModelParamFromKey(details.model),
-  [details.model]
-);
-
-const simulatorUrl = React.useMemo(() => {
-  if (!simModelParam) return 'https://simulador.mfn.pt/';
-
-  const params = new URLSearchParams();
-  params.set('model', simModelParam);
-
-  // Acabamento
-  if (details.finish) {
-    params.set('finish', details.finish);
-  }
-
-  // Vidro / Monocromático (fix mono_*)
-  if (details.glassTypeKey) {
-    let glassToken = details.glassTypeKey;
-    if (glassToken.startsWith('mono_')) {
-      glassToken = glassToken.replace(/^mono_/, '');
-    }
-    params.set('glass', glassToken);
-  }
-
-  // Puxador
-  if (!hideHandles && details.handleKey) {
-    params.set('handle', details.handleKey);
-  }
-
-  const comps = details.complements ?? [];
-  if (comps.length) {
-    params.set('complementos', comps.join(','));
-    params.set('complemento', comps[0]); // legacy fallback
-  }
-
-  // Vision
-  if (comps.includes('vision')) {
-    if (details.barColor) params.set('barColor', details.barColor);
-    if (details.visionSupport) params.set('visionSupport', details.visionSupport);
-  }
-
-  // Toalheiro 1
-  if (comps.includes('toalheiro1') && details.towelColorMode) {
-    params.set('towel', details.towelColorMode);
-  }
-
-  // Prateleira
-  if (comps.includes('prateleira')) {
-    if (details.shelfColorMode) params.set('shelf', details.shelfColorMode);
-    if (details.shelfHeightPct != null) {
-      params.set('altura', String(Math.round(details.shelfHeightPct)));
-    }
-  }
-
-
-
-  // Barra de fixação
-  if (showFixBar && details.fixingBarMode) {
-    params.set('fixingBarMode', details.fixingBarMode);
-  }
-
-  // Acrílico
-  if (details.acrylic && details.acrylic !== 'nenhum') {
-    params.set('acrylic', details.acrylic);
-  }
-
-  // Serigrafia
-  if (details.serigraphy && details.serigraphy !== 'nenhum') {
-    params.set('serigrafia', details.serigraphy);
-    if (details.serigrafiaColor) {
-      params.set('serigrafiaColor', details.serigrafiaColor);
-    }
-  }
-  return `https://simulador.mfn.pt/?${params.toString()}`;
-}, [simModelParam, details, hideHandles, showFixBar]);
 
   // If model is empty once models load, select first
   React.useEffect(() => {
@@ -972,15 +897,26 @@ const simulatorUrl = React.useMemo(() => {
     </div>
 
     <div className="flex items-center gap-3">
-      {simModelParam && (
-        <a
-          href={simulatorUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+      {details.model && (
+        <SimulatorButton
+          modelKey={details.model}
+          finishKey={details.finish}
+          glassTypeKey={details.glassTypeKey}
+          handleKey={hideHandles ? undefined : details.handleKey}
+          acrylicKey={details.acrylic}
+          serigrafiaKey={details.serigraphy}
+          serigrafiaColor={details.serigrafiaColor}
+          fixingBarMode={showFixBar ? details.fixingBarMode : undefined}
+          complementos={details.complements}
+          barColor={details.barColor}
+          visionSupport={details.visionSupport}
+          towelColorMode={details.towelColorMode}
+          shelfColorMode={details.shelfColorMode}
+          shelfHeightPct={details.shelfHeightPct}
+          newTab
+          showIcon={false}
           className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Ver no simulador
-        </a>
+        />
       )}
       <button
         className="rounded-lg px-2 py-1 text-muted-foreground hover:bg-muted/50"

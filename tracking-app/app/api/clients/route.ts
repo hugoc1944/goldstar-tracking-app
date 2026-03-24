@@ -37,10 +37,11 @@ export async function GET(req: Request) {
   let search = rawSearch;
   if (search.startsWith('#')) search = search.slice(1);
 
-      // WHERE
+      // WHERE — only show customers who have at least one Order
     const where: any = {
-      deletedAt: null, 
-    };  
+      deletedAt: null,
+      orders: { some: {} },
+    };
     if (search) {
     where.OR = [
       { name: { contains: search, mode: 'insensitive' } },

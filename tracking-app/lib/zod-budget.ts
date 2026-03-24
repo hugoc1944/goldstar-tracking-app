@@ -135,6 +135,7 @@ export type BudgetCreate = z.infer<typeof BudgetCreateSchema>;
 export const BudgetUpdateSchema = BudgetCreateSchema.partial().extend({
   priceCents: z.number().int().nonnegative().optional(),
   installPriceCents: z.number().int().nonnegative().optional(),
+  deliveryPriceCents: z.number().int().nonnegative().optional(),
   quotedPdfUrl: z.string().url().optional(),
 });
 export type BudgetUpdateInput = z.infer<typeof BudgetUpdateSchema>;

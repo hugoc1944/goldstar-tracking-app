@@ -270,7 +270,7 @@ export function OrcamentoPDF({ b }: { b: any }) {
   const logoUrl = `${base}/brand/goldstar-logo_dark.png`;
   const siteUrl = 'https://mfn.pt';
 
-  const total = ((b.priceCents ?? 0) + (b.installPriceCents ?? 0)) / 100;
+  const total = ((b.priceCents ?? 0) + (b.installPriceCents ?? 0) + (b.deliveryPriceCents ?? 0)) / 100;
   const deliveryText =
     b.deliveryType === 'entrega_instalacao' || b.deliveryType === 'instalacao'
       ? 'Entrega + Instalação'
@@ -419,6 +419,7 @@ export function OrcamentoPDF({ b }: { b: any }) {
           <View style={styles.sectionBody}>
             <View style={styles.totalRow}><Text>Preço</Text><Text>{eur(b.priceCents)}</Text></View>
             <View style={styles.totalRow}><Text>Instalação</Text><Text>{eur(b.installPriceCents)}</Text></View>
+            <View style={styles.totalRow}><Text>Entrega</Text><Text>{eur(b.deliveryPriceCents)}</Text></View>
             <Text style={styles.grand}>Total: {total.toFixed(2)} €</Text>
           </View>
         </View>

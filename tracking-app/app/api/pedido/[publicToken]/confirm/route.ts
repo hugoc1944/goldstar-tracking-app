@@ -280,6 +280,7 @@ export async function POST(_req: Request, { params }: Params) {
   const { Resend } = await import('resend');
   const resend = new Resend(process.env.RESEND_API_KEY!);
   const fromAddr = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+  const replyTo = process.env.ROOT_EMAIL || undefined;
 
   const html = await render(VisitAwaitingEmail({
     customerName: (updatedOrder!.customer?.name) ?? 'Cliente',
@@ -291,6 +292,7 @@ export async function POST(_req: Request, { params }: Params) {
     to: updatedOrder!.customer?.email ?? '',
     subject: 'Pedido confirmado - a aguardar visita do técnico',
     html,
+    ...(replyTo ? { replyTo } : {}),
   });
 
   return NextResponse.json({ ok: true });

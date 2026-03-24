@@ -6,24 +6,11 @@ export const runtime = 'nodejs';
 
 function decodeCursor(s?: string | null) {
   if (!s) return null;
-  const [iso, eid] = s.split('|');
+  const [iso, oid] = s.split('|');
   const at = new Date(iso);
-  if (!eid || Number.isNaN(+at)) return null;
-  return { at, eid };
+  if (!oid || Number.isNaN(+at)) return null;
+  return { at, oid };
 }
-
-// Helper type for the include we’re using
-type EventWithOrder = {
-  id: string;
-  at: Date;
-  order: {
-    id: string;
-    status: 'PREPARACAO' | 'PRODUCAO' | 'EXPEDICAO' | 'ENTREGUE';
-    publicToken: string | null;
-    customer: { name: string | null } | null;
-    items: { model: string | null }[];
-  };
-};
 
 export async function GET(req: Request) {
   await requireAdminSession();
@@ -36,34 +23,25 @@ export async function GET(req: Request) {
   const cursorRaw = searchParams.get('cursor');
   const cursor = decodeCursor(cursorRaw);
 
-  // Filter StatusEvent by to='ENTREGUE' and related order fields
+  // Query Order directly — status='ENTREGUE' is the source of truth.
+  // The previous implementation queried StatusEvent (to='ENTREGUE'), which
+  // excluded orders that reached ENTREGUE status without a matching event record.
   const where: any = {
-    to: 'ENTREGUE',
-    order: {
-      status: 'ENTREGUE',
-      deletedAt: null,  
-      ...(search
-        ? {
-            OR: [
-              { id: { contains: search, mode: 'insensitive' } },
-              { customer: { name: { contains: search, mode: 'insensitive' } } },
-            ],
-          }
-        : {}),
-    },
+    status: 'ENTREGUE',
+    deletedAt: null,
   };
 
-  if (cursor) {
-    if (sort === 'newest') {
-      where.OR = [{ at: { lt: cursor.at } }, { at: cursor.at, id: { lt: cursor.eid } }];
-    } else {
-      where.OR = [{ at: { gt: cursor.at } }, { at: cursor.at, id: { gt: cursor.eid } }];
-    }
+  if (search) {
+    where.OR = [
+      { id: { contains: search, mode: 'insensitive' } },
+      { customer: { name: { contains: search, mode: 'insensitive' } } },
+    ];
   }
 
-// ---- NEW: month / year filter for reporting ----
-  const yearParam = url.searchParams.get('year');
-  const monthParam = url.searchParams.get('month'); // "1".."12" or ""
+  // Month/year filter: match against the StatusEvent that recorded the ENTREGUE transition.
+  // Orders with no StatusEvent (legacy data) will only appear when no period filter is active.
+  const yearParam = searchParams.get('year');
+  const monthParam = searchParams.get('month'); // "1".."12" or ""
 
   if (yearParam) {
     const y = Number(yearParam);
@@ -74,68 +52,97 @@ export async function GET(req: Request) {
       if (monthParam) {
         const m = Number(monthParam); // 1..12
         if (!Number.isNaN(m) && m >= 1 && m <= 12) {
-          // JS months are 0-based
           start = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
           end =
             m === 12
               ? new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0))
               : new Date(Date.UTC(y, m, 1, 0, 0, 0));
         } else {
-          // invalid month, fallback to full year
           start = new Date(Date.UTC(y, 0, 1, 0, 0, 0));
           end = new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0));
         }
       } else {
-        // only year -> full year
         start = new Date(Date.UTC(y, 0, 1, 0, 0, 0));
         end = new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0));
       }
 
-      where.at = { gte: start, lt: end };
+      where.events = {
+        some: {
+          to: 'ENTREGUE',
+          at: { gte: start, lt: end },
+        },
+      };
     }
   }
 
-  const events = (await prisma.statusEvent.findMany({
+  // Cursor-based pagination on updatedAt (updated when status changes to ENTREGUE)
+  if (cursor) {
+    const cursorCond =
+      sort === 'newest'
+        ? {
+            OR: [
+              { updatedAt: { lt: cursor.at } },
+              { updatedAt: cursor.at, id: { lt: cursor.oid } },
+            ],
+          }
+        : {
+            OR: [
+              { updatedAt: { gt: cursor.at } },
+              { updatedAt: cursor.at, id: { gt: cursor.oid } },
+            ],
+          };
+
+    where.AND = [...(where.AND ?? []), cursorCond];
+  }
+
+  const orders = await prisma.order.findMany({
     where,
     orderBy: [
-      { at: sort === 'newest' ? 'desc' : 'asc' },
+      { updatedAt: sort === 'newest' ? 'desc' : 'asc' },
       { id: sort === 'newest' ? 'desc' : 'asc' },
     ],
     take: take + 1,
-    include: {
-      order: {
-        select: {
-          id: true,
-          status: true,
-          publicToken: true,
-          customer: { select: { name: true } },
-          items: {
-            orderBy: { createdAt: 'asc' },
-            take: 1,
-            select: { model: true },
-          },
-        },
+    select: {
+      id: true,
+      updatedAt: true,
+      customer: { select: { name: true } },
+      items: {
+        orderBy: { createdAt: 'asc' },
+        take: 1,
+        select: { model: true },
+      },
+      // Include the ENTREGUE event for an accurate delivery timestamp
+      events: {
+        where: { to: 'ENTREGUE' },
+        orderBy: { at: 'desc' },
+        take: 1,
+        select: { at: true },
       },
     },
-  })) as EventWithOrder[];
+  });
 
-  const hasMore = events.length > take;
-  const slice = hasMore ? events.slice(0, take) : events;
+  const hasMore = orders.length > take;
+  const slice = hasMore ? orders.slice(0, take) : orders;
 
-  const rows = slice.map((ev) => ({
-    id: ev.order.id,
-    shortId: ev.order.id.slice(0, 8),                  // computed short id
-    customer: { name: ev.order.customer?.name || '' },
-    deliveredAt: ev.at.toISOString(),                  // string (ISO) for the UI
-    model: ev.order.items?.[0]?.model ?? null,
+  const rows = slice.map((o) => ({
+    id: o.id,
+    shortId: o.id.slice(0, 8),
+    customer: { name: o.customer?.name || '' },
+    // Use the StatusEvent timestamp when available; fall back to updatedAt
+    deliveredAt: (o.events[0]?.at ?? o.updatedAt).toISOString(),
+    model: o.items[0]?.model ?? null,
   }));
 
   const next = hasMore ? slice[slice.length - 1] : null;
-  const nextCursor = next ? `${next.at.toISOString()}|${next.id}` : null;
+  const nextCursor = next
+    ? `${next.updatedAt.toISOString()}|${next.id}`
+    : null;
+
+  const total = await prisma.order.count({ where });
 
   return NextResponse.json({
     rows,
-    total: rows.length + (hasMore ? 1 : 0),
+    total,
     nextCursor,
   });
 }

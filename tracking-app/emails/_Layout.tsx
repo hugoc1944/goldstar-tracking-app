@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Html, Head, Preview, Body, Container, Section, Text, Hr, Link } from '@react-email/components';
+import { Html, Head, Preview, Body, Container, Section, Text } from '@react-email/components';
 
 export default function Layout({
   preview,
@@ -9,23 +9,36 @@ export default function Layout({
     <Html lang="pt-PT">
       <Head />
       <Preview>{preview}</Preview>
-      <Body style={{ backgroundColor: '#f6f6f8', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Arial' }}>
-        <Container style={{ maxWidth: 620, margin: '24px auto', background: '#fff', borderRadius: 12, padding: 24 }}>
-          <Section>
-            <Text style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>GOLDSTAR • Tracking</Text>
-            <Text style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Atualizações do seu pedido</Text>
-          </Section>
-          <Hr />
-          <Section>{children}</Section>
-          <Hr />
-          <Section>
-            <Text style={{ fontSize: 12, color: '#888' }}>
-              Esta é uma mensagem automática. Em caso de dúvida, responda a este email.
-            </Text>
-            <Text style={{ fontSize: 12, color: '#888' }}>
-              © {new Date().getFullYear()} GOLDSTAR • <Link href={process.env.NEXTAUTH_URL || '#'}>tracking</Link>
+      <Body style={{
+        backgroundColor: '#EBEBEB',
+        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        margin: 0,
+        padding: 0,
+      }}>
+        <Container style={{ maxWidth: 600, margin: '32px auto 48px auto' }}>
+
+          {/* Gold brand header */}
+          <Section style={{ backgroundColor: '#F5C200', padding: '20px 40px' }}>
+            <Text style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111111', letterSpacing: '1px' }}>
+              GOLDSTAR
             </Text>
           </Section>
+
+          {/* White content area */}
+          <Section style={{ backgroundColor: '#FFFFFF', padding: '36px 40px 40px 40px' }}>
+            {children}
+          </Section>
+
+          {/* Footer */}
+          <Section style={{ backgroundColor: '#F4F4F4', padding: '20px 40px' }}>
+            <Text style={{ margin: '0 0 4px 0', fontSize: 12, color: '#888888', lineHeight: '1.5' }}>
+              Este é um email automático gerado pelo sistema GOLDSTAR.
+            </Text>
+            <Text style={{ margin: 0, fontSize: 12, color: '#AAAAAA' }}>
+              © {new Date().getFullYear()} GOLDSTAR
+            </Text>
+          </Section>
+
         </Container>
       </Body>
     </Html>

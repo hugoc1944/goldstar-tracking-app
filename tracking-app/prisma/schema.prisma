@@ -162,6 +162,7 @@ model Budget {
   photoUrls         Json?
   priceCents        Int?
   installPriceCents Int?
+  deliveryPriceCents Int?
   notes             String?
   launchBonus    String?   // 'shampooGOLDSTAR' | 'gelGOLDSTAR'
   quotedPdfUrl      String?
