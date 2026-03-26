@@ -700,6 +700,7 @@ export const PublicBudgetSchema = z.object({
   shelfColorMode: DualColorModeEnum.optional(),
   cornerChoice: z.string().optional(),
   cornerColorMode: z.string().optional(),
+  painelCorner: z.string().optional(),  // 'reto' | null — only for Painel_V2
   shelfHeightPct: NumOpt,
 
   // medidas
@@ -933,7 +934,7 @@ export function BudgetFormPageInner() {
       })(),
       visionSupport: undefined, visionBar: undefined,
       towelColorMode: undefined, shelfColorMode: undefined,   
-      cornerChoice: undefined, cornerColorMode: undefined, shelfHeightPct: undefined,
+      cornerChoice: undefined, cornerColorMode: undefined, painelCorner: undefined, shelfHeightPct: undefined,
       measurePreset: undefined,
       widthMm: undefined, heightMm: undefined, depthMm: undefined,
       willSendLater: search.get('later') === '1',
@@ -966,6 +967,7 @@ React.useEffect(() => {
     form.setValue('depthMm', undefined, { shouldDirty: true });
     form.setValue('willSendLater', false, { shouldDirty: true });
     form.setValue('measurePreset', undefined, { shouldDirty: true });
+    form.setValue('painelCorner', undefined, { shouldDirty: true });
   }
 
   prevModelRef.current = modelKey;
@@ -1193,6 +1195,24 @@ if (rawSer) {
       if (normalized) {
         form.setValue('cornerChoice', normalized, { shouldDirty: false });
       }
+    }
+
+    // painelCorner (only for Painel_V2): accept ?painelCorner=, ?cantovidro=, ?canto= (when not corner1/corner2)
+    const pcRaw = (
+      search.get('painelCorner') ??
+      search.get('cantovidro') ??
+      // Only use ?canto= if it's not a shelf corner value (corner1/corner2/canto1/canto2)
+      (() => {
+        const c = search.get('canto');
+        if (!c) return null;
+        const lc = c.toLowerCase();
+        if (['corner1','corner2','canto1','canto2'].includes(lc)) return null;
+        return c;
+      })()
+    )?.toLowerCase();
+
+    if (pcRaw === 'reto' || pcRaw === 'straight') {
+      form.setValue('painelCorner', 'reto', { shouldDirty: false });
     }
 
     // Fixing bar mode (if rule.hasFixingBar)
@@ -1569,11 +1589,16 @@ const onSubmit: SubmitHandler<FormValues> = async (values) => {
 
     // helper to convert cm to mm
     const toMm = (cm?: number) => (cm == null ? undefined : Math.round(cm * 10));
+    // painelCorner: only persist 'reto' for Painel_V2, otherwise null
+    const isPV2 = /painel[_-]?v2\b/i.test(values.modelKey ?? '');
+    const cleanPainelCorner = (isPV2 && values.painelCorner === 'reto') ? 'reto' : undefined;
+
     const payload = {
       ...values,
       widthMm:  toMm(values.widthMm),
       heightMm: toMm(values.heightMm),
       depthMm:  toMm(values.depthMm),
+      painelCorner: cleanPainelCorner,
       recaptchaToken: values.recaptchaToken,
 
     };
@@ -2120,6 +2145,19 @@ React.useEffect(() => {
                       />
                     )}
                   />
+                </FieldWrap>
+              )}
+
+              {/* Canto do Painel — only for Painel_V2 */}
+              {/painel[_-]?v2\b/i.test(modelKey ?? '') && (
+                <FieldWrap label="Canto do Painel">
+                  <select
+                    {...form.register('painelCorner')}
+                    className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FFD200]"
+                  >
+                    <option value="">Canto Redondo (padrão)</option>
+                    <option value="reto">Canto Reto</option>
+                  </select>
                 </FieldWrap>
               )}
 

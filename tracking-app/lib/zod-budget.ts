@@ -55,6 +55,7 @@ export const BudgetCreateSchema = z.object({
 
   cornerChoice: z.string().optional(),
   cornerColorMode: z.string().optional(),
+  painelCorner: z.string().optional(),  // 'reto' | null — only for Painel_V2
 
   // Medidas
   widthMm: NumOpt,

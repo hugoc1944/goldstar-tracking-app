@@ -76,6 +76,7 @@ export const AdminBudgetSchema = z.object({
 
   cornerChoice: z.string().optional(),
   cornerColorMode: z.string().optional(),
+  painelCorner: z.string().optional(),
 
   // medidas (form em CM)
   widthMm: NumOpt,
@@ -177,7 +178,7 @@ function normalizeForPatch(values: any) {
     'phone','nif','handleKey','barColor','visionSupport',
     'acrylicKey','serigrafiaKey','serigrafiaColor',
     'fixingBarMode','towelColorMode','shelfColorMode',
-    'cornerChoice','cornerColorMode','housingType','notes'
+    'cornerChoice','cornerColorMode','painelCorner','housingType','notes'
   ].forEach(emptyToUndef);
  // ✅ complementos → complements (legacy string) + complemento fallback
   const cleanComps = (out.complementos ?? [])
@@ -229,6 +230,7 @@ export default function AdminBudgetEditor({ budget }: { budget: any }) {
 
       cornerChoice: budget.cornerChoice ?? undefined,
       cornerColorMode: budget.cornerColorMode ?? undefined,
+      painelCorner: budget.painelCorner ?? undefined,
       shelfHeightPct: budget.shelfHeightPct ?? 100,
 
       widthMm:  budget.widthMm  != null ? budget.widthMm  / 10 : undefined,
@@ -645,6 +647,7 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
             shelfColorMode={fv.shelfColorMode}
             shelfHeightPct={fv.shelfHeightPct}
             cornerChoice={fv.cornerChoice}
+            painelCorner={fv.painelCorner}
             compact
             newTab
             showIcon={false}
@@ -721,6 +724,19 @@ const isJobBusy = bgJob?.status === 'queued' || bgJob?.status === 'running';
             >
               <option value="padrao">Padrão</option>
               <option value="acabamento">Cor do acabamento</option>
+            </select>
+          </FieldWrap>
+        )}
+
+        {/* Canto do Painel — only for Painel_V2 */}
+        {/painel[_-]?v2\b/i.test(modelKey ?? '') && (
+          <FieldWrap label="Canto do Painel">
+            <select
+              {...form.register('painelCorner')}
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FFD200]"
+            >
+              <option value="">Canto Redondo (padrão)</option>
+              <option value="reto">Canto Reto</option>
             </select>
           </FieldWrap>
         )}

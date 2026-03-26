@@ -148,6 +148,7 @@ model Budget {
   towelColorMode    String?
   cornerChoice      String?
   cornerColorMode   String?
+  painelCorner     String?   // 'reto' | null (null = redondo/default) — only for Painel_V2
   fixingBarMode    String?
   shelfColorMode   String?
   shelfHeightPct Int?   // 20–100, altura da prateleira em percentagem

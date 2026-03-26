@@ -205,6 +205,7 @@ export async function POST(_req: Request, { params }: Params) {
           glassTypeKey: (budget as any).glassTypeKey ?? null,
           handleKey: (budget as any).handleKey ?? null,
           fixingBarMode: (budget as any).fixingBarMode ?? null,
+          painelCorner: (budget as any).painelCorner ?? null,
           barColor: (budget as any).complemento === 'vision' ? (budget as any).barColor ?? null : null,
           visionSupport: (budget as any).complemento === 'vision' ? (budget as any).visionSupport ?? null : null,
           towelColorMode: (budget as any).complemento === 'toalheiro1' ? (budget as any).towelColorMode ?? null : null,

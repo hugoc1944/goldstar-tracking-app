@@ -212,6 +212,11 @@ if (isTurbo) {
     }
   }
 
+  // painelCorner — only for Painel_V2 when 'reto'
+  if (b.painelCorner === 'reto' && /painel[_-]?v2\b/i.test(String(b.modelKey ?? ''))) {
+    q.set('painelCorner', 'reto');
+  }
+
   // Optional: compact/locked chrome
   q.set('compact', '1');
 
@@ -309,6 +314,10 @@ export function OrcamentoPDF({ b }: { b: any }) {
             <View style={styles.row}><Text style={styles.label}>Modelo</Text><Text style={styles.value}>{humanModel(b.modelKey)}</Text></View>
             <View style={styles.row}><Text style={styles.label}>Puxador</Text><Text style={styles.value}>{humanHandle(b.handleKey)}</Text></View>
             <View style={styles.row}><Text style={styles.label}>Acabamento</Text><Text style={styles.value}>{titleCase(String(b.finishKey ?? '-'))}</Text></View>
+            {/* Canto do Painel — only for Painel_V2 when reto */}
+            {b.painelCorner === 'reto' && /painel[_-]?v2\b/i.test(String(b.modelKey ?? '')) && (
+              <View style={styles.row}><Text style={styles.label}>Canto do Painel</Text><Text style={styles.value}>Reto</Text></View>
+            )}
             { /* For Turbo models show Acrílico (Água Viva) instead of Vidro */ }
             {isTurboModelKey(b.modelKey) ? (
               <View style={styles.row}>

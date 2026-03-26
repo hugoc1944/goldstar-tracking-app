@@ -71,6 +71,7 @@ export interface SimulatorButtonProps {
   shelfColorMode?: string;
   shelfHeightPct?: number;
   cornerChoice?: string;
+  painelCorner?: string;
   widthMm?: number;
   heightMm?: number;
   depthMm?: number;
@@ -107,6 +108,7 @@ export function SimulatorButton({
   shelfColorMode,
   shelfHeightPct,
   cornerChoice,
+  painelCorner,
   widthMm,
   heightMm,
   depthMm,
@@ -159,6 +161,11 @@ export function SimulatorButton({
           q.set('corner', cornerChoice);
         }
       }
+    }
+
+    // painelCorner — only for Painel_V2 when corner is 'reto'
+    if (painelCorner === 'reto' && /painel[_-]?v2\b/i.test(modelKey ?? '')) {
+      q.set('painelCorner', 'reto');
     }
 
     if (widthMm) q.set('width', String(widthMm));
