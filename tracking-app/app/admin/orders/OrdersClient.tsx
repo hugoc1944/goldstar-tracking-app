@@ -435,7 +435,9 @@ useEffect(() => {
       visionSupport:   f.details?.visionSupport   ?? '',
       towelColorMode:  f.details?.towelColorMode  ?? '',
       shelfColorMode:  f.details?.shelfColorMode  ?? '',
+      shelfHeightPct:  f.details?.shelfHeightPct  ?? null,
       fixingBarMode:   f.details?.fixingBarMode   ?? '',
+      painelCorner:    f.details?.painelCorner     ?? null,
     },
 
     // ✅ NEW: forward delivery so EditOrderModal can prefill
@@ -493,7 +495,9 @@ useEffect(() => {
         visionSupport,
         towelColorMode,
         shelfColorMode,
+        shelfHeightPct:  custom.shelfHeightPct ?? null,
         fixingBarMode:   custom.fixingBarMode ?? '',
+        painelCorner:    custom.painelCorner ?? null,
       },
       delivery: {
         deliveryType: (data as any).deliveryType ?? null,

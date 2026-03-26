@@ -47,6 +47,7 @@ const PatchBody = z.object({
     towelColorMode: z.string().optional().nullable(),
     shelfColorMode: z.string().optional().nullable(),
     fixingBarMode: z.string().optional().nullable(),
+    painelCorner: z.string().optional().nullable(),
     monochrome: z.string().optional().nullable(),
     tracking: z.string().optional().nullable(),
     // note: width/height/depth may also come as top-level fields (see below)
@@ -424,6 +425,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
             ...(body.details.acrylic         !== undefined ? { acrylic: body.details.acrylic } : {}),
             ...(body.details.serigrafiaColor !== undefined ? { serigrafiaColor: body.details.serigrafiaColor } : {}),
             ...(body.details.fixingBarMode   !== undefined ? { fixingBarMode: body.details.fixingBarMode } : {}),
+            ...(body.details.painelCorner    !== undefined ? { painelCorner: body.details.painelCorner } : {}),
             ...(body.details.barColor        !== undefined ? { barColor: body.details.barColor } : {}),
             ...(body.details.visionSupport   !== undefined ? { visionSupport: body.details.visionSupport } : {}),
             ...(body.details.towelColorMode  !== undefined ? { towelColorMode: body.details.towelColorMode } : {}),
@@ -553,6 +555,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         serigraphy:      (cz.serigraphy ?? cz.serigrafiaKey ?? 'nenhum'),
         serigrafiaColor: (detailItem?.customizations as any)?.serigrafiaColor ?? '',
         fixingBarMode:   (detailItem?.customizations as any)?.fixingBarMode ?? '',
+        painelCorner:    (detailItem?.customizations as any)?.painelCorner ?? null,
         ...( (() => {
           const raw = detailItem?.complements;
           if (typeof raw === 'string' && raw.trim().startsWith('{')) {

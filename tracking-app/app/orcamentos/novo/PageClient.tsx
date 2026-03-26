@@ -1152,7 +1152,9 @@ if (rawSer) {
     }
   }
 }
-    setIf('visionSupport', matchOption(finishesByRule, search.get('visionSupport')));
+    setIf('visionSupport',
+      matchOption(finishesByRule, search.get('visionSupport')) ||
+      matchOption(finishesByRule, search.get('visionSupport')?.replace(/_/g, '')));
 
     // Acrylic and Serigrafia (optional)
     setIf('acrylicKey',    matchOption(acrylicAll,     search.get('acrylic')));

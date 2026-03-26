@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls -la /c/Users/sardr/Desktop/folders/new_webtogo/projetos/2025/Goldstar/goldstar-tracking-app/tracking-app/.env*)"
+      "Bash(ls -la /c/Users/sardr/Desktop/folders/new_webtogo/projetos/2025/Goldstar/goldstar-tracking-app/tracking-app/.env*)",
+      "Bash(node -e \":*)",
+      "Bash(npx next:*)"
     ]
   }
 }

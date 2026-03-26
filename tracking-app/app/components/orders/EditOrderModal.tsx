@@ -385,7 +385,8 @@ export function EditOrderModal({
       towelColorMode?: string;
       shelfColorMode?: string;
       fixingBarMode?: string;
-      shelfHeightPct?: number | null;   
+      painelCorner?: string | null;
+      shelfHeightPct?: number | null;
 
     };
     // optional delivery (if your loader added it)
@@ -443,7 +444,8 @@ export function EditOrderModal({
     towelColorMode: order.details.towelColorMode ?? '',
     shelfColorMode: order.details.shelfColorMode ?? '',
     fixingBarMode: order.details.fixingBarMode ?? '',
-    shelfHeightPct: order.details.shelfHeightPct ?? null,  
+    painelCorner: order.details.painelCorner ?? '',
+    shelfHeightPct: order.details.shelfHeightPct ?? null,
 
   });
 
@@ -659,6 +661,7 @@ React.useEffect(() => {
     next.towelColorMode = "";
     next.shelfColorMode = "";
     next.fixingBarMode = "";
+    next.painelCorner = "";
     next.shelfHeightPct = null;
 
     return next;
@@ -817,6 +820,7 @@ React.useEffect(() => {
                 ? (details.shelfHeightPct ?? null)
                 : null,
             fixingBarMode: showFixBar ? (details.fixingBarMode || null) : null,
+            painelCorner: /painel[_-]?v2\b/i.test(details.model) ? (details.painelCorner || null) : null,
           },
           ...measuresPayload,
           delivery: {
@@ -913,6 +917,7 @@ React.useEffect(() => {
           towelColorMode={details.towelColorMode}
           shelfColorMode={details.shelfColorMode}
           shelfHeightPct={details.shelfHeightPct}
+          painelCorner={details.painelCorner}
           newTab
           showIcon={false}
           className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -1012,6 +1017,21 @@ React.useEffect(() => {
                     >
                       <option value="padrao">Padrão</option>
                       <option value="acabamento">Cor do acabamento</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Canto do Painel — only for Painel_V2 */}
+                {/painel[_-]?v2\b/i.test(details.model) && (
+                  <div>
+                    <label className="block text-sm mb-1">Canto do Painel</label>
+                    <select
+                      className="block w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/50"
+                      value={details.painelCorner}
+                      onChange={(e) => setDetails(d => ({ ...d, painelCorner: e.target.value }))}
+                    >
+                      <option value="">Canto Redondo (padrão)</option>
+                      <option value="reto">Canto Reto</option>
                     </select>
                   </div>
                 )}
@@ -1165,8 +1185,9 @@ React.useEffect(() => {
                       </label>
                       <input
                         type="range"
-                        min={60}
-                        max={120}
+                        min={20}
+                        max={100}
+                        step={1}
                         value={details.shelfHeightPct ?? 100}
                         onChange={(e) => setDetails(d => ({ ...d, shelfHeightPct: Number(e.target.value) }))}
                         className="w-full"

@@ -81,7 +81,9 @@ const CUSTOM_LABEL: Record<string, string> = {
   visionSupport: 'Cor de Suporte',
   towelColorMode: 'Cor do Toalheiro',
   shelfColorMode: 'Cor do Suporte',
+  shelfHeightPct: 'Altura da Prateleira',
   fixingBarMode: 'Barra de Fixação',
+  painelCorner: 'Canto do Painel',
 };
 
 const PT: Record<Step, string> = {
@@ -112,8 +114,11 @@ function formatCustomizationValue(key: string, value: unknown): string {
   }
   // booleans → Sim/Não
   if (typeof value === 'boolean') return value ? 'Sim' : 'Não';
-  // numbers → as-is
-  if (typeof value === 'number') return String(value);
+  // numbers — special formatting by key
+  if (typeof value === 'number') {
+    if (key === 'shelfHeightPct') return `${value}%`;
+    return String(value);
+  }
   // non-strings we can't format
   if (typeof value !== 'string') return '-';
 
@@ -139,6 +144,7 @@ function formatCustomizationValue(key: string, value: unknown): string {
     towelColorMode:    { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
     shelfColorMode:    { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
     fixingBarMode:     { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
+    painelCorner:      { reto: 'Reto', '': 'Redondo (padrão)' },
     serigrafiaColor:   { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
     complemento:       { vision: 'Vision', toalheiro1: 'Toalheiro 1', prateleira: 'Prateleira (canto)', nenhum: 'Nenhum' },
     complements:       { vision: 'Vision', toalheiro1: 'Toalheiro 1', prateleira: 'Prateleira (canto)', nenhum: 'Nenhum' },
@@ -568,6 +574,7 @@ export default function PublicOrderPage({
                   const ORDERED_KEYS = [
                     'handleKey',
                     'finishKey',
+                    'painelCorner',
                     'glassTypeKey',   // handled specially if Turbo
                     'acrylicKey',     // handled specially for Turbo (preferred)
                     'serigrafiaKey',
@@ -576,6 +583,7 @@ export default function PublicOrderPage({
                     'visionSupport',
                     'towelColorMode',
                     'shelfColorMode',
+                    'shelfHeightPct',
                     'fixingBarMode',
                     'complemento',
                   ];
@@ -589,6 +597,7 @@ export default function PublicOrderPage({
                     'photoUrls',
                     'priceCents',
                     'installPriceCents',
+                    'deliveryPriceCents',
                     'modelKey',
                   ]);
 
@@ -675,10 +684,14 @@ export default function PublicOrderPage({
                     asNumber((cust as any).installPriceCents) ??
                     asNumber((base as any)?.installPriceCents);
 
+                  const deliveryCents =
+                    asNumber((cust as any).deliveryPriceCents) ??
+                    asNumber((base as any)?.deliveryPriceCents);
+
                   return (
                     <div className="grid gap-4 md:grid-cols-1">
                       {/* Valores do Orçamento */}
-                      {(priceCents != null || installCents != null) && (
+                      {(priceCents != null || installCents != null || deliveryCents != null) && (
                         <div className="rounded-lg bg-white/60 p-3">
                           <h5 className="mb-1 text-xs font-semibold text-neutral-700 uppercase tracking-wide">
                             Valores do Orçamento
@@ -693,6 +706,12 @@ export default function PublicOrderPage({
                             {priceCents != null && (
                               <li>
                                 <span className="font-medium">Preço:</span> {fmtEUR(priceCents)}
+                              </li>
+                            )}
+                            {deliveryCents != null && (
+                              <li>
+                                <span className="font-medium">Preço de entrega:</span>{' '}
+                                {fmtEUR(deliveryCents)}
                               </li>
                             )}
                           </ul>

@@ -197,6 +197,11 @@ export async function POST(_req: Request, { params }: Params) {
     if (budget) {
       const existingItems = await tx.orderItem.findMany({ where: { orderId: o!.id }});
       if (existingItems.length === 0) {
+        const comps = String((budget as any).complemento ?? '').toLowerCase().split(',').map(s => s.trim());
+        const hasVision = comps.includes('vision');
+        const hasPrateleira = comps.includes('prateleira');
+        const hasToalheiro = comps.includes('toalheiro1');
+
         const customizations: Record<string, any> = {
           finishKey: (budget as any).finishKey ?? null,
           acrylicKey: (budget as any).acrylicKey ?? null,
@@ -206,12 +211,16 @@ export async function POST(_req: Request, { params }: Params) {
           handleKey: (budget as any).handleKey ?? null,
           fixingBarMode: (budget as any).fixingBarMode ?? null,
           painelCorner: (budget as any).painelCorner ?? null,
-          barColor: (budget as any).complemento === 'vision' ? (budget as any).barColor ?? null : null,
-          visionSupport: (budget as any).complemento === 'vision' ? (budget as any).visionSupport ?? null : null,
-          towelColorMode: (budget as any).complemento === 'toalheiro1' ? (budget as any).towelColorMode ?? null : null,
-          shelfColorMode: (budget as any).complemento === 'prateleira' ? (budget as any).shelfColorMode ?? null : null,
+          barColor: hasVision ? (budget as any).barColor ?? null : null,
+          visionSupport: hasVision ? (budget as any).visionSupport ?? null : null,
+          towelColorMode: hasToalheiro ? (budget as any).towelColorMode ?? null : null,
+          shelfColorMode: hasPrateleira ? (budget as any).shelfColorMode ?? null : null,
+          shelfHeightPct: hasPrateleira ? (budget as any).shelfHeightPct ?? null : null,
+          cornerChoice: hasPrateleira ? (budget as any).cornerChoice ?? null : null,
+          cornerColorMode: hasPrateleira ? (budget as any).cornerColorMode ?? null : null,
           priceCents: (budget as any).priceCents ?? null,
           installPriceCents: (budget as any).installPriceCents ?? null,
+          deliveryPriceCents: (budget as any).deliveryPriceCents ?? null,
         };
 
         await tx.orderItem.create({
