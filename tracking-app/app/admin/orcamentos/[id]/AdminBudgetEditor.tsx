@@ -1350,6 +1350,8 @@ const MODEL_CANON: Record<string, string> = {
   splash: 'Splash',
   turbo: 'Turbo',
   fole: 'Fole',
+  folefrontal: 'FoleFrontal',
+  fole4portas: 'Fole4Portas',
   foleap: 'FoleAP',
 };
 
@@ -1393,7 +1395,7 @@ const FINISH_FILE_MAP: Record<string, string> = {
   cromado: 'Cromado',
   dourado: 'Dourado',
   gunmetal: 'GunMetal',
-  preto: 'Preto',
+  preto: 'preto',
   pretomate: 'PretoMate',
   pretofosco: 'PretoFosco',
   rosa: 'Rosa',

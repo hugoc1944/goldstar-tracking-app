@@ -76,6 +76,8 @@ const MODEL_CANON: Record<string, string> = {
   splash: 'Splash',
   turbo: 'Turbo',
   fole: 'Fole',
+  folefrontal: 'FoleFrontal',
+  fole4portas: 'Fole4Portas',
   foleap: 'FoleAP',
 };
 function modelStemFromAny(input: string) {
@@ -100,7 +102,7 @@ const FINISH_FILE_MAP: Record<string, string> = {
   amarelo: "Amarelo", anodizado: "Anodizado", azulclaro: "AzulClaro", azulescuro: "AzulEscuro",
   azulturquesa: "AzulTurquesa", bordeaux: "Bordeaux", branco: "Branco", brancomate: "BrancoMate",
   castanho: "Castanho", cinza: "Cinza", cremelclaro: "CremeClaro", cremeescuro: "CremeEscuro",
-  cromado: "Cromado", dourado: "Dourado", gunmetal: "GunMetal", preto: "Preto", pretomate: "PretoMate",
+  cromado: "Cromado", dourado: "Dourado", gunmetal: "GunMetal", preto: "preto", pretomate: "PretoMate",
   pretofosco: "PretoFosco", rosa: "Rosa", verdeagua: "VerdeAgua", verdefloresta: "VerdeFloresta", vermelho: "Vermelho",
 };
 const finishIconSrc = (name: string) => {
