@@ -239,7 +239,13 @@ function handleIconSrc(value?: string) {
 }
 
 // - vidros/monos (ficheiros tipo Transparente.png, Fosco.png, Gris.png, ...)
-const glassIconSrcFromLabel = (label: string) => `${PRE}/glass/vidros/${labelToStem(label)}.png`;
+// Para monocromáticos ("Monocromático — Bronze"), usa só o sub-tipo ("Bronze")
+function glassIconSrcFromLabel(label: string) {
+  const emDashIdx = label.indexOf('—');
+  const stem = labelToStem(emDashIdx >= 0 ? label.slice(emDashIdx + 1) : label);
+  if (!stem) return '';
+  return `${PRE}/glass/vidros/${stem}.png`;
+}
 
 // - acrílicos (ficheiros tipo AguaViva.png, PolicarbonatoTransparente.png, ...)
 const acrylicIconSrcFromLabel = (label: string) => `${PRE}/acrylics/${labelToStem(label)}.png`;

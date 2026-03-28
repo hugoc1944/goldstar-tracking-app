@@ -1432,8 +1432,12 @@ function labelToStem(label: string) {
     .replace(/[\s_-]+/g, '');
 }
 
-const glassIconSrcFromLabel = (label: string) =>
-  `${PRE}/glass/vidros/${labelToStem(label)}.png`;
+function glassIconSrcFromLabel(label: string) {
+  const emDashIdx = label.indexOf('—');
+  const stem = labelToStem(emDashIdx >= 0 ? label.slice(emDashIdx + 1) : label);
+  if (!stem) return '';
+  return `${PRE}/glass/vidros/${stem}.png`;
+}
 
 const acrylicIconSrcFromLabel = (label: string) =>
   `${PRE}/acrylics/${labelToStem(label)}.png`;
