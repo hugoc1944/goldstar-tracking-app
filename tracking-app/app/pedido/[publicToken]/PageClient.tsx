@@ -146,8 +146,8 @@ function formatCustomizationValue(key: string, value: unknown): string {
     fixingBarMode:     { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
     painelCorner:      { reto: 'Reto', '': 'Redondo (padrão)' },
     serigrafiaColor:   { padrao: 'Padrão', acabamento: 'Cor do Acabamento' },
-    complemento:       { vision: 'Vision', toalheiro1: 'Toalheiro 1', prateleira: 'Prateleira (canto)', nenhum: 'Nenhum' },
-    complements:       { vision: 'Vision', toalheiro1: 'Toalheiro 1', prateleira: 'Prateleira (canto)', nenhum: 'Nenhum' },
+    complemento:       { vision: 'Vision', toalheiro1: 'Toalheiro 1', toalheiro_europa: 'Toalheiro Europa', prateleira: 'Prateleira (canto)', nenhum: 'Nenhum' },
+    complements:       { vision: 'Vision', toalheiro1: 'Toalheiro 1', toalheiro_europa: 'Toalheiro Europa', prateleira: 'Prateleira (canto)', nenhum: 'Nenhum' },
   };
   const map = SPECIAL[key];
   if (map?.[v]) return map[v];

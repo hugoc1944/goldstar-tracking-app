@@ -48,6 +48,7 @@ const COMPLEMENTO_OPTIONS = [
   { value: 'vision', label: 'Toalheiro Vision' },
   { value: 'toalheiro1', label: 'Toalheiro 1' },
   { value: 'prateleira', label: 'Prateleira de Canto' },
+  { value: 'toalheiro_europa', label: 'Toalheiro Europa' },
 ];
 
 // Vision bars (fixed set)

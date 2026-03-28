@@ -1416,12 +1416,12 @@ const finishIconSrc = (name: string) => {
 
 // --- handles ---
 function handleIconSrc(value?: string) {
-  if (!value || value === '') return `${PRE}/handles/default.png`;
+  if (!value || value === '') return '';
   if (/^h(\d)$/i.test(value)) {
     return `${PRE}/handles/Handle_${value.replace(/^h/i, '')}.png`;
   }
-  if (value.toLowerCase() === 'sem') return `${PRE}/handles/none.png`;
-  return `${PRE}/handles/default.png`;
+  if (value.toLowerCase() === 'sem') return '';
+  return '';
 }
 
 // --- glass/acrylic/serigrafia helpers ---
@@ -1462,7 +1462,8 @@ function complementoIconSrc(value: string) {
   const v = value.toLowerCase();
   if (v === 'vision') return `${PRE}/toalheiros/Vision.png`;
   if (v === 'toalheiro1') return `${PRE}/toalheiros/Toalheiro1.png`;
-  if (v === 'prateleira') return `${PRE}/shelf/Prateleira.png`;
+  if (v === 'toalheiro_europa') return `${PRE}/toalheiros/ToalheiroEuropa.png`;
+  if (v === 'prateleira') return `${PRE}/shelf/prateleira.jpg`;
   return '';
 }
 

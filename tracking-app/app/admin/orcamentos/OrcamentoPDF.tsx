@@ -49,6 +49,7 @@ function humanComplementos(v?: string[] | string | null) {
     vision: 'Vision',
     toalheiro1: 'Toalheiro 1',
     prateleira: 'Prateleira (canto)',
+    toalheiro_europa: 'Toalheiro Europa',
   };
 
   const cleaned = normalizeComplementos(v);

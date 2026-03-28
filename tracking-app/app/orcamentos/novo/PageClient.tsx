@@ -34,6 +34,13 @@ function uniqByValue(items: {value:string; label:string; order?:number}[]) {
   return out;
 }
 
+// Normalize alternative complemento tokens to their canonical DB values
+function normalizeCompToken(s: string) {
+  const k = s.toLowerCase().replace(/[\s_-]+/g, '');
+  if (k === 'toalheiroeuropa') return 'toalheiro_europa';
+  return s;
+}
+
 // Canonicalize strings: lowercase, strip accents, unify separators
 function canon(input: string) {
   return input
@@ -225,10 +232,10 @@ const finishIconSrc = (name: string) => {
 
 // - puxadores (catálogo usa p.ex. h1..h7/sem); simulador usa Handle_1..8 e none/default
 function handleIconSrc(value?: string) {
-  if (!value || value === '' ) return `${PRE}/handles/default.png`;
+  if (!value || value === '' ) return '';
   if (/^h(\d)$/i.test(value)) return `${PRE}/handles/Handle_${value.replace(/^h/i,'')}.png`;
-  if (value.toLowerCase() === 'sem') return `${PRE}/handles/none.png`;
-  return `${PRE}/handles/default.png`;
+  if (value.toLowerCase() === 'sem') return '';
+  return '';
 }
 
 // - vidros/monos (ficheiros tipo Transparente.png, Fosco.png, Gris.png, ...)
@@ -319,7 +326,7 @@ function complementoIconSrc(value: string) {
   const v = value.toLowerCase();
   if (v === 'vision') return `${PRE}/toalheiros/Vision.png`;
   if (v === 'toalheiro1') return `${PRE}/toalheiros/Toalheiro1.png`;
-  if (v === 'prateleira') return `${PRE}/shelf/Prateleira.png`;
+  if (v === 'prateleira') return `${PRE}/shelf/prateleira.jpg`;
   // 'nenhum' → sem ícone
   return '';
 }
@@ -925,7 +932,7 @@ export function BudgetFormPageInner() {
       complementos: (() => {
         const raw = search.get('complemento');
         if (!raw) return [];
-        return raw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+        return raw.split(',').map(c => normalizeCompToken(c.trim().toLowerCase())).filter(Boolean);
       })(),
       launchBonus: ((): 'shampooGOLDSTAR' | 'gelGOLDSTAR' => {
         const b = (search.get('bonus') ?? '').toLowerCase();
@@ -1081,7 +1088,7 @@ React.useEffect(() => {
   if (rawComps) {
     const mapped = rawComps
       .split(',')
-      .map(s => s.trim())
+      .map(s => normalizeCompToken(s.trim()))
       .map(s => matchOption(compAll, s))
       .filter(Boolean) as string[];
 
