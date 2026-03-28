@@ -243,8 +243,15 @@ function handleIconSrc(value?: string) {
 // - vidros/monos (ficheiros tipo Transparente.png, Fosco.png, Gris.png, ...)
 // Para monocromáticos ("Monocromático — Bronze"), usa só o sub-tipo ("Bronze")
 function glassIconSrcFromLabel(label: string) {
+  // 1. Em dash split (e.g. "Monocromático — Bronze" → "Bronze")
   const emDashIdx = label.indexOf('—');
-  const stem = labelToStem(emDashIdx >= 0 ? label.slice(emDashIdx + 1) : label);
+  if (emDashIdx >= 0) {
+    const sub = labelToStem(label.slice(emDashIdx + 1));
+    if (sub) return `${PRE}/glass/vidros/${sub}.png`;
+  }
+  // 2. Strip "Monocromatico" prefix if present (handles labels without em dash)
+  let stem = labelToStem(label);
+  if (stem.startsWith('Monocromatico')) stem = stem.slice('Monocromatico'.length);
   if (!stem) return '';
   return `${PRE}/glass/vidros/${stem}.png`;
 }

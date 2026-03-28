@@ -1436,7 +1436,12 @@ function labelToStem(label: string) {
 
 function glassIconSrcFromLabel(label: string) {
   const emDashIdx = label.indexOf('—');
-  const stem = labelToStem(emDashIdx >= 0 ? label.slice(emDashIdx + 1) : label);
+  if (emDashIdx >= 0) {
+    const sub = labelToStem(label.slice(emDashIdx + 1));
+    if (sub) return `${PRE}/glass/vidros/${sub}.png`;
+  }
+  let stem = labelToStem(label);
+  if (stem.startsWith('Monocromatico')) stem = stem.slice('Monocromatico'.length);
   if (!stem) return '';
   return `${PRE}/glass/vidros/${stem}.png`;
 }
