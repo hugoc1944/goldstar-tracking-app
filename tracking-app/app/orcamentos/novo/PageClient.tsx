@@ -341,6 +341,7 @@ function complementoIconSrc(value: string) {
   const v = value.toLowerCase();
   if (v === 'vision') return `${PRE}/toalheiros/Vision.png`;
   if (v === 'toalheiro1') return `${PRE}/toalheiros/Toalheiro1.png`;
+  if (v === 'toalheiro_europa') return `${PRE}/toalheiros/ToalheiroEuropa.png`;
   if (v === 'prateleira') return `${PRE}/shelf/prateleira.jpg`;
   // 'nenhum' → sem ícone
   return '';
