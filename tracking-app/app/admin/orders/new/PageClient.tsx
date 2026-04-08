@@ -694,6 +694,15 @@ export function NewOrderClient() {
   const showAcrylic = !!rule?.allowAcrylicAndPoly;
   const showFixBar  = !!rule?.hasFixingBar;
   const allowTowel1 = !!rule?.allowTowel1;
+  const isEuropa = details.model?.toLowerCase().includes('europa') ?? false;
+  const filteredComplements = useMemo(() => {
+    return (complements ?? []).filter(c => {
+      const v = c.value.toLowerCase();
+      if (v === 'toalheiro1' && !allowTowel1) return false;
+      if (v === 'toalheiro_europa' && !isEuropa) return false;
+      return true;
+    });
+  }, [complements, allowTowel1, isEuropa]);
 
   const comps = details.complements;
   const hasVision = comps.includes('vision');
@@ -1130,7 +1139,7 @@ const [delivery, setDelivery] = useState({
           <ComplementoSelector
             value={details.complements}
             onChange={(v) => setDetails((d) => ({ ...d, complements: v }))}
-            options={complements}
+            options={filteredComplements}
           />
           </div>
 

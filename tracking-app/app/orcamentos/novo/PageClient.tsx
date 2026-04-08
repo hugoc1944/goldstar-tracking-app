@@ -991,10 +991,18 @@ React.useEffect(() => {
     form.setValue('willSendLater', false, { shouldDirty: true });
     form.setValue('measurePreset', undefined, { shouldDirty: true });
     form.setValue('painelCorner', undefined, { shouldDirty: true });
+
+    // Clear toalheiro_europa if switching away from Europa model
+    if (!modelKey?.toLowerCase().includes('europa')) {
+      const curr = form.getValues('complementos') ?? [];
+      if (curr.includes('toalheiro_europa')) {
+        form.setValue('complementos', curr.filter((c: string) => c !== 'toalheiro_europa'), { shouldDirty: true });
+      }
+    }
   }
 
   prevModelRef.current = modelKey;
-}, [modelKey]); 
+}, [modelKey]);
 
   const hideDepth = React.useMemo(() => hideDepthForModel(modelKey), [modelKey]);
   // Load catalog once
@@ -1325,10 +1333,15 @@ if (rawSer) {
   const complemento = React.useMemo(() => catalog?.['COMPLEMENTO'] ?? [], [catalog]);
   const showToalheiro1 = React.useMemo(() => isStrongOrPainelModel(modelKey), [modelKey]);
 
+const isEuropa = React.useMemo(() => isEuropaModel(modelKey), [modelKey]);
 const complementoFiltered = React.useMemo(() => {
   const base = (catalog?.['COMPLEMENTO'] ?? []) as CatItem[];
-  return showToalheiro1 ? base : base.filter(o => o.value !== 'toalheiro1');
-}, [catalog, showToalheiro1]);
+  return base.filter(o => {
+    if (o.value === 'toalheiro1' && !showToalheiro1) return false;
+    if (o.value === 'toalheiro_europa' && !isEuropa) return false;
+    return true;
+  });
+}, [catalog, showToalheiro1, isEuropa]);
   const barColors = React.useMemo(() => catalog?.['VISION_BAR_COLOR'] ?? [], [catalog]);
   const serPrime = React.useMemo(() => catalog?.['SERIGRAFIA_PRIME'] ?? [], [catalog]);
   const serQuadros = React.useMemo(() => catalog?.['SERIGRAFIA_QUADROS'] ?? [], [catalog]);
@@ -1846,6 +1859,11 @@ function isStrongOrPainelModel(key?: string) {
   if (!key) return false;
   const k = key.toLowerCase();
   return k.includes('strong') || k.includes('painel');
+}
+
+function isEuropaModel(key?: string) {
+  if (!key) return false;
+  return key.toLowerCase().includes('europa');
 }
 
 

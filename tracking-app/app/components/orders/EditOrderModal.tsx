@@ -889,13 +889,15 @@ React.useEffect(() => {
     );
   }
 
+  const isEuropa = details.model?.toLowerCase().includes('europa') ?? false;
   const filteredComplements = React.useMemo(() => {
     return (complements ?? []).filter(c => {
       const v = c.value.toLowerCase();
       if (v === 'toalheiro1' && !allowTowel1) return false;
+      if (v === 'toalheiro_europa' && !isEuropa) return false;
       return true;
     }).map(c => ({ value: c.value, label: c.label }));
-  }, [complements, allowTowel1]);
+  }, [complements, allowTowel1, isEuropa]);
 
   return (
     <div

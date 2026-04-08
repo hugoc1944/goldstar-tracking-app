@@ -450,11 +450,16 @@ function getSerigrafiaColorIcon(opt: { value: string; label: string }) {
   const hideHandles = !!rule?.hideHandles;
   const allowAcrylic = !!rule?.allowAcrylicAndPoly;
   const allowTowel1 = !!rule?.allowTowel1;
+  const isEuropa = modelKey?.toLowerCase().includes('europa') ?? false;
   const complementoFiltered = React.useMemo(() => {
     const base = (catalog?.['COMPLEMENTO'] ?? []) as CatItem[];
-    return allowTowel1 ? base.filter(o => o.value !== 'nenhum') 
-                      : base.filter(o => o.value !== 'nenhum' && o.value !== 'toalheiro1');
-  }, [catalog, allowTowel1]);
+    return base.filter(o => {
+      if (o.value === 'nenhum') return false;
+      if (o.value === 'toalheiro1' && !allowTowel1) return false;
+      if (o.value === 'toalheiro_europa' && !isEuropa) return false;
+      return true;
+    });
+  }, [catalog, allowTowel1, isEuropa]);
   /* ---------------- Actions ---------------- */
 
 // acrylic clears glass
